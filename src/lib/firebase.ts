@@ -1,6 +1,7 @@
 import { initializeApp } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
 import { initializeFirestore } from 'firebase/firestore';
+import { getStorage } from 'firebase/storage';
 
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
@@ -13,15 +14,15 @@ const firebaseConfig = {
 
 const app = initializeApp(firebaseConfig);
 
-// CRITICAL: ignoreUndefinedProperties prevents "addDoc invalid data" errors
-// when optional fields (like sku, hsn) are undefined in parsed invoice data.
+// ignoreUndefinedProperties prevents "addDoc invalid data" errors
+// when optional fields (like sku, hsn) are undefined in parsed data.
 export const db = initializeFirestore(app, {
   ignoreUndefinedProperties: true,
 });
 
 export const auth = getAuth(app);
+export const storage = getStorage(app);
 
-// Admin UID from env — used by AuthContext to enforce single-admin access
 export const ADMIN_UID = import.meta.env.VITE_ADMIN_UID as string;
 
 export default app;

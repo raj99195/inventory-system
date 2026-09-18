@@ -18,7 +18,6 @@ import {
   ChevronDown,
   Command,
   Plus,
-  Zap,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useGlobalSearch, type SearchResult } from '@/hooks/useGlobalSearch';

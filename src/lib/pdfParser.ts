@@ -1,8 +1,10 @@
 import * as pdfjsLib from 'pdfjs-dist';
-// @ts-expect-error — vite ?url import
-import pdfWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 
-pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorker;
+// Use URL constructor — works in Vite without vite-specific ?url import syntax
+pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
+  'pdfjs-dist/build/pdf.worker.min.mjs',
+  import.meta.url
+).toString();
 
 export interface ParsedLineItem {
   serialNo: number;
@@ -35,10 +37,6 @@ interface PositionedItem {
   width: number;
 }
 
-/**
- * Format a Date as YYYY-MM-DD in LOCAL time (not UTC).
- * Avoids timezone offset shifting the date by a day (was showing 08 instead of 09).
- */
 function toLocalISODate(dt: Date): string {
   const yyyy = dt.getFullYear();
   const mm = String(dt.getMonth() + 1).padStart(2, '0');
@@ -254,8 +252,6 @@ function extractLineItems(lines: string[]): ParsedLineItem[] {
   let startIdx = -1;
   let endIdx = lines.length;
 
-  // CRITICAL FIX: only detect FIRST header (page 1). Page 2 headers were
-  // overwriting startIdx, causing items 1-22 to be skipped.
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
     if (
@@ -296,7 +292,6 @@ function extractLineItems(lines: string[]): ParsedLineItem[] {
     /^[\d,\.\s%₹\-]+$/.test(s) ||
     /^(HSN|Code|Qty|Rate|Amount|Sr|IGST|CGST|SGST|Item|Description|Discount)/i.test(s);
 
-  // Skip repeated header rows on page 2+
   const isRepeatedHeader = (s: string) =>
     /Sr\.?\s*No\.?/i.test(s) && /Item/i.test(s) && /(Qty|Rate|Amount)/i.test(s);
 
@@ -392,10 +387,6 @@ export async function parseZohoInvoice(file: File): Promise<ParsedInvoice> {
   };
 }
 
-/**
- * Recursively remove `undefined` values from an object/array so Firestore accepts it.
- * Use before calling addDoc/setDoc when data may contain optional fields.
- */
 export function stripUndefined<T>(value: T): T {
   if (Array.isArray(value)) {
     return value.map((v) => stripUndefined(v)) as unknown as T;

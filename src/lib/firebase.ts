@@ -1,7 +1,6 @@
 import { initializeApp } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
-import { getFirestore } from 'firebase/firestore';
-import { getStorage } from 'firebase/storage';
+import { initializeFirestore } from 'firebase/firestore';
 
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
@@ -12,10 +11,17 @@ const firebaseConfig = {
   appId: import.meta.env.VITE_FIREBASE_APP_ID,
 };
 
-export const app = initializeApp(firebaseConfig);
-export const auth = getAuth(app);
-export const db = getFirestore(app);
-export const storage = getStorage(app);
+const app = initializeApp(firebaseConfig);
 
-// Single admin UID — writes locked to this UID via Firestore rules
+// CRITICAL: ignoreUndefinedProperties prevents "addDoc invalid data" errors
+// when optional fields (like sku, hsn) are undefined in parsed invoice data.
+export const db = initializeFirestore(app, {
+  ignoreUndefinedProperties: true,
+});
+
+export const auth = getAuth(app);
+
+// Admin UID from env — used by AuthContext to enforce single-admin access
 export const ADMIN_UID = import.meta.env.VITE_ADMIN_UID as string;
+
+export default app;

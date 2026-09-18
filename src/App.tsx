@@ -9,8 +9,6 @@ import InvoicesPage from './pages/InvoicesPage';
 import EmployeesPage from './pages/EmployeesPage';
 import AssetsPage from './pages/AssetsPage';
 import AssignmentsPage from './pages/AssignmentsPage';
-import RepairsPage from './pages/RepairsPage';
-import ReportsPage from './pages/ReportsPage';
 import AuditPage from './pages/AuditPage';
 import LoadingScreen from './components/ui/LoadingScreen';
 
@@ -40,8 +38,6 @@ export default function App() {
         <Route path="employees" element={<EmployeesPage />} />
         <Route path="assets" element={<AssetsPage />} />
         <Route path="assignments" element={<AssignmentsPage />} />
-        <Route path="repairs" element={<RepairsPage />} />
-        <Route path="reports" element={<ReportsPage />} />
         <Route path="audit" element={<AuditPage />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />

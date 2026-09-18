@@ -1,0 +1,133 @@
+@import "tailwindcss";
+
+@theme {
+  /* STEMmantra brand colors */
+  --color-brand-orange: #F97316;
+  --color-brand-orange-light: #FB923C;
+  --color-brand-orange-dark: #EA580C;
+  --color-brand-orange-50: #FFF7ED;
+  --color-brand-orange-100: #FFEDD5;
+  --color-brand-orange-200: #FED7AA;
+
+  --color-brand-choco: #3D2817;
+  --color-brand-choco-light: #5C3D28;
+  --color-brand-choco-soft: #8B6F5A;
+
+  --color-brand-cream: #FFF8F0;
+  --color-brand-cream-dark: #FEF3E7;
+  --color-brand-cream-deep: #FDE9D0;
+
+  --color-pastel-green: #D4EBD0;
+  --color-pastel-green-deep: #A8D5A2;
+  --color-pastel-blue: #DCEBF5;
+  --color-pastel-blue-deep: #B3D4E8;
+  --color-pastel-peach: #FCE5C5;
+  --color-pastel-peach-deep: #F7CB92;
+  --color-pastel-pink: #F9D5DC;
+  --color-pastel-pink-deep: #F0A8B4;
+
+  --color-success: #16A34A;
+  --color-warning: #EAB308;
+  --color-danger: #DC2626;
+  --color-info: #0EA5E9;
+
+  --font-display: "Fraunces", "Playfair Display", ui-serif, Georgia, serif;
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+
+  --radius-brand: 1.25rem;
+  --radius-brand-lg: 1.75rem;
+
+  --shadow-soft: 0 2px 8px rgba(61, 40, 23, 0.06);
+  --shadow-card: 0 4px 20px rgba(61, 40, 23, 0.08);
+  --shadow-lift: 0 8px 32px rgba(61, 40, 23, 0.12);
+}
+
+@keyframes shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+@layer base {
+  * {
+    border-color: rgba(61, 40, 23, 0.08);
+  }
+
+  html, body, #root {
+    height: 100%;
+  }
+
+  body {
+    background-color: var(--color-brand-cream);
+    color: var(--color-brand-choco);
+    font-family: var(--font-sans);
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+    -webkit-font-smoothing: antialiased;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    font-family: var(--font-display);
+    color: var(--color-brand-choco);
+    letter-spacing: -0.02em;
+  }
+
+  .bg-dots {
+    background-image: radial-gradient(circle, rgba(249, 115, 22, 0.12) 1px, transparent 1px);
+    background-size: 24px 24px;
+  }
+
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-track { background: var(--color-brand-cream-dark); }
+  ::-webkit-scrollbar-thumb {
+    background: var(--color-brand-orange-light);
+    border-radius: 999px;
+    border: 2px solid var(--color-brand-cream-dark);
+  }
+  ::-webkit-scrollbar-thumb:hover { background: var(--color-brand-orange); }
+}
+
+@layer components {
+  .btn-primary {
+    @apply inline-flex items-center justify-center gap-2 px-6 py-3 rounded-full font-semibold text-white transition-all duration-200;
+    background: linear-gradient(135deg, #FB923C 0%, #F97316 100%);
+    box-shadow: 0 4px 14px rgba(249, 115, 22, 0.35);
+  }
+  .btn-primary:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 6px 20px rgba(249, 115, 22, 0.45);
+  }
+  .btn-primary:active { transform: translateY(0); }
+
+  .btn-secondary {
+    @apply inline-flex items-center justify-center gap-2 px-6 py-3 rounded-full font-semibold transition-all duration-200 bg-white;
+    color: var(--color-brand-choco);
+    border: 1.5px solid rgba(61, 40, 23, 0.15);
+  }
+  .btn-secondary:hover {
+    border-color: var(--color-brand-orange);
+    color: var(--color-brand-orange);
+  }
+
+  .card {
+    @apply bg-white rounded-3xl p-6 transition-all duration-200;
+    box-shadow: var(--shadow-card);
+  }
+  .card:hover { box-shadow: var(--shadow-lift); }
+
+  .input-field {
+    @apply w-full px-4 py-3 rounded-2xl bg-white transition-all duration-200 outline-none;
+    border: 1.5px solid rgba(61, 40, 23, 0.12);
+    color: var(--color-brand-choco);
+  }
+  .input-field:focus {
+    border-color: var(--color-brand-orange);
+    box-shadow: 0 0 0 4px rgba(249, 115, 22, 0.1);
+  }
+
+  .badge {
+    @apply inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-semibold;
+  }
+  .badge-success { background: var(--color-pastel-green); color: #166534; }
+  .badge-warning { background: var(--color-pastel-peach); color: #92400E; }
+  .badge-danger  { background: var(--color-pastel-pink); color: #991B1B; }
+  .badge-info    { background: var(--color-pastel-blue); color: #075985; }
+}

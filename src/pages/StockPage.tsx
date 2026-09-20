@@ -50,7 +50,7 @@ const TYPE_META: Record<
 
 export default function StockPage() {
   const { transactions, loading } = useStockTransactions(500);
-  const { can, canAny } = usePermission();
+  const { can } = usePermission();
   const location = useLocation();
   const navigate = useNavigate();
 
@@ -61,11 +61,10 @@ export default function StockPage() {
   const [formOpen, setFormOpen] = useState(false);
 
   // ANY stock action permission allows creating a transaction
-  const canCreate = canAny([
-    'stock.stockIn',
-    'stock.stockOut',
-    'stock.adjustment',
-  ]);
+  const canCreate =
+    can('stock.stockIn') ||
+    can('stock.stockOut') ||
+    can('stock.adjustment');
 
   // Auto-open create modal via location.state (only if allowed)
   useEffect(() => {

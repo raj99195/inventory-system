@@ -59,14 +59,11 @@ export default function QuotationsPage() {
   const [editing, setEditing] = useState<Quotation | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<Quotation | null>(null);
 
-  // Permissions — falls back to super admin (bootstrap) if permission model
-  // doesn't yet include quotations. Update ROLE_PRESETS to grant granular access.
   const canView = can('quotations.view') || can('dashboard.view');
   const canCreate = can('quotations.create') || can('dashboard.view');
   const canEdit = can('quotations.edit') || can('dashboard.view');
   const canDelete = can('quotations.delete');
 
-  // Auto-open create modal via location.state
   useEffect(() => {
     const state = location.state as { openCreate?: boolean } | null;
     if (state?.openCreate) {
@@ -337,10 +334,11 @@ export default function QuotationsPage() {
         open={!!confirmDelete}
         onClose={() => setConfirmDelete(null)}
         onConfirm={handleDelete}
-        title={
+        title="Delete Quotation?"
+        message={
           confirmDelete
-            ? `Delete quotation ${confirmDelete.quotationNumber}? This action cannot be undone.`
-            : 'Delete Quotation?'
+            ? `This will permanently delete quotation ${confirmDelete.quotationNumber} for ${confirmDelete.customerName}. This action cannot be undone.`
+            : ''
         }
         confirmLabel="Delete"
         variant="danger"

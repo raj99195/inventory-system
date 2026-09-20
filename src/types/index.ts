@@ -19,6 +19,12 @@ export interface Permissions {
     verify: boolean;
     delete: boolean;
   };
+  quotations: {
+    view: boolean;
+    create: boolean;
+    edit: boolean;
+    delete: boolean;
+  }; // 🚀 NEW
   employees: {
     view: boolean;
     create: boolean;
@@ -39,14 +45,14 @@ export interface Permissions {
 
 // ==================== APP USER ====================
 export interface AppUser {
-  uid: string; // Firebase Auth UID
+  uid: string;
   email: string;
   name: string;
   role: AppRole;
   permissions: Permissions;
   active: boolean;
   createdAt: Timestamp;
-  createdBy: string; // uid of creator
+  createdBy: string;
   updatedAt: Timestamp;
 }
 
@@ -97,7 +103,7 @@ export interface Kit {
   componentCost: number;
   sellingPrice: number;
   gstPercent: number;
-  currentStock: number; // 🚀 pre-assembled kits available for sale
+  currentStock: number;
   imageUrl?: string;
   status: KitStatus;
   createdAt: Timestamp;
@@ -119,7 +125,7 @@ export type StockSource =
   | 'zoho-invoice'
   | 'return'
   | 'adjustment'
-  | 'kit-assembly'; // 🚀 stock deducted because a kit was assembled
+  | 'kit-assembly';
 
 export interface StockTransaction {
   id: string;
@@ -133,7 +139,7 @@ export interface StockTransaction {
   reason?: string;
   remarks?: string;
   invoiceId?: string;
-  kitId?: string; // 🚀 populated when source = 'kit-assembly'
+  kitId?: string;
   kitSku?: string;
   attachmentUrl?: string;
   performedBy: string;
@@ -177,6 +183,61 @@ export interface Invoice {
   verifiedAt?: Timestamp;
   stockUpdatedAt?: Timestamp;
   errorMessage?: string;
+}
+
+// ==================== 🚀 QUOTATIONS ====================
+export type QuotationStatus =
+  | 'draft'
+  | 'sent'
+  | 'accepted'
+  | 'rejected'
+  | 'expired'
+  | 'converted';
+
+export interface QuotationLineItem {
+  description: string;
+  hsn?: string;
+  quantity: number;
+  unit: string;
+  rate: number;
+  discountPercent: number;
+  gstPercent: number;
+  amount: number; // qty × rate × (1 - disc/100) × (1 + gst/100)
+  productId?: string; // linked product (optional)
+  productSku?: string;
+  remarks?: string;
+}
+
+export interface Quotation {
+  id: string;
+  quotationNumber: string;
+  quotationDate: string; // ISO date
+  validUntil: string;
+  // Customer
+  customerName: string;
+  customerCompany?: string;
+  customerAddress?: string;
+  customerGstin?: string;
+  customerEmail?: string;
+  customerPhone?: string;
+  // Items
+  items: QuotationLineItem[];
+  itemCount: number;
+  // Totals
+  subTotal: number; // sum of (qty × rate)
+  totalDiscount: number;
+  totalTax: number; // GST sum
+  grandTotal: number;
+  // Terms
+  terms?: string;
+  notes?: string;
+  status: QuotationStatus;
+  // Meta
+  createdAt: Timestamp;
+  createdBy: string;
+  updatedAt: Timestamp;
+  sentAt?: Timestamp;
+  acceptedAt?: Timestamp;
 }
 
 // ==================== EMPLOYEES ====================

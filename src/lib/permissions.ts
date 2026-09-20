@@ -66,6 +66,16 @@ export const PERMISSION_MODULES: PermissionModule[] = [
     ],
   },
   {
+    key: 'quotations',
+    label: 'Quotations',
+    actions: [
+      { key: 'view', label: 'View' },
+      { key: 'create', label: 'Create' },
+      { key: 'edit', label: 'Edit' },
+      { key: 'delete', label: 'Delete' },
+    ],
+  },
+  {
     key: 'employees',
     label: 'Employees',
     actions: [
@@ -131,6 +141,7 @@ export const SUPER_ADMIN_PRESET: Permissions = {
   kits: { view: true, create: true, edit: true, delete: true },
   stock: { view: true, stockIn: true, stockOut: true, adjustment: true },
   invoices: { view: true, upload: true, verify: true, delete: true },
+  quotations: { view: true, create: true, edit: true, delete: true },
   employees: { view: true, create: true, edit: true, delete: true },
   assets: { view: true, create: true, edit: true, delete: true },
   assignments: { view: true, assign: true, return: true, transfer: true },
@@ -148,6 +159,7 @@ export const ADMIN_PRESET: Permissions = {
   kits: { view: true, create: true, edit: true, delete: false },
   stock: { view: true, stockIn: true, stockOut: true, adjustment: true },
   invoices: { view: true, upload: true, verify: true, delete: false },
+  quotations: { view: true, create: true, edit: true, delete: false },
   employees: { view: true, create: true, edit: true, delete: false },
   assets: { view: true, create: true, edit: true, delete: false },
   assignments: { view: true, assign: true, return: true, transfer: true },
@@ -157,7 +169,7 @@ export const ADMIN_PRESET: Permissions = {
 };
 
 /**
- * Accountant: Mostly view-only, but can upload/verify invoices.
+ * Accountant: Mostly view-only, but can upload/verify invoices and create quotations.
  */
 export const ACCOUNTANT_PRESET: Permissions = {
   dashboard: { view: true },
@@ -165,6 +177,7 @@ export const ACCOUNTANT_PRESET: Permissions = {
   kits: { view: true, create: false, edit: false, delete: false },
   stock: { view: true, stockIn: false, stockOut: false, adjustment: false },
   invoices: { view: true, upload: true, verify: true, delete: false },
+  quotations: { view: true, create: true, edit: true, delete: false },
   employees: { view: true, create: false, edit: false, delete: false },
   assets: { view: true, create: false, edit: false, delete: false },
   assignments: { view: true, assign: false, return: false, transfer: false },
@@ -182,6 +195,7 @@ export const EMPTY_PRESET: Permissions = {
   kits: { view: false, create: false, edit: false, delete: false },
   stock: { view: false, stockIn: false, stockOut: false, adjustment: false },
   invoices: { view: false, upload: false, verify: false, delete: false },
+  quotations: { view: false, create: false, edit: false, delete: false },
   employees: { view: false, create: false, edit: false, delete: false },
   assets: { view: false, create: false, edit: false, delete: false },
   assignments: { view: false, assign: false, return: false, transfer: false },
@@ -206,7 +220,7 @@ export const ROLE_LABELS: Record<AppRole, string> = {
 export const ROLE_DESCRIPTIONS: Record<AppRole, string> = {
   super_admin: 'Full access. Can delete anything and manage all users & permissions.',
   admin: 'Full access except delete. Can create users (Admin / Accountant only).',
-  accountant: 'View-only across the app. Can upload & verify invoices.',
+  accountant: 'View-only across the app. Can upload & verify invoices and create quotations.',
   custom: 'Manually toggled permissions set by a Super Admin.',
 };
 

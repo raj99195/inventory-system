@@ -7,6 +7,7 @@ import {
   Boxes,
   ArrowLeftRight,
   FileText,
+  Receipt,
   Users,
   Laptop,
   UserCheck,
@@ -90,6 +91,15 @@ const navItems: NavItem[] = [
     quickAddType: 'invoices',
   },
   {
+    to: '/quotations',
+    label: 'Quotations',
+    icon: Receipt,
+    viewPerm: 'quotations.view',
+    createPerm: 'quotations.create',
+    // No quickAddType — QuickAddContext doesn't have quotations yet;
+    // sidebar hover "+" falls back to navigating with openCreate state
+  },
+  {
     to: '/employees',
     label: 'Employees',
     icon: Users,
@@ -127,6 +137,7 @@ const QUICK_ACTIONS: {
   { label: 'New Kit', icon: Boxes, href: '/kits', perm: 'kits.create', quickAddType: 'kits' },
   { label: 'Stock Movement', icon: ArrowLeftRight, href: '/stock', perm: 'stock.stockIn', quickAddType: 'stock' },
   { label: 'Upload Invoice', icon: FileText, href: '/invoices', perm: 'invoices.upload', quickAddType: 'invoices' },
+  { label: 'New Quotation', icon: Receipt, href: '/quotations', perm: 'quotations.create' },
   { label: 'Add Employee', icon: Users, href: '/employees', perm: 'employees.create', quickAddType: 'employees' },
   { label: 'Register Asset', icon: Laptop, href: '/assets', perm: 'assets.create', quickAddType: 'assets' },
   { label: 'Assign Asset', icon: UserCheck, href: '/assignments', perm: 'assignments.assign', quickAddType: 'assignments' },
@@ -236,6 +247,7 @@ function getPageTitle(path: string) {
     '/kits': { category: 'Inventory', title: 'Kits' },
     '/stock': { category: 'Inventory', title: 'Stock Movement' },
     '/invoices': { category: 'Inventory', title: 'Invoices' },
+    '/quotations': { category: 'Sales', title: 'Quotations' },
     '/employees': { category: 'Team', title: 'Employees' },
     '/assets': { category: 'Assets', title: 'Company Assets' },
     '/assignments': { category: 'Assets', title: 'Assignments' },

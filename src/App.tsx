@@ -14,6 +14,7 @@ import AuditPage from './pages/AuditPage';
 import UsersPage from './pages/UsersPage';
 import NoAccessPage from './pages/NoAccessPage';
 import LoadingScreen from './components/ui/LoadingScreen';
+import QuotationsPage from '@/pages/QuotationsPage';
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, loading, ready, noAccess } = useAuth();
@@ -46,6 +47,7 @@ export default function App() {
         <Route path="assignments" element={<AssignmentsPage />} />
         <Route path="audit" element={<AuditPage />} />
         <Route path="users" element={<UsersPage />} />
+        <Route path="/quotations" element={<QuotationsPage />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

@@ -1,4 +1,5 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { useLocation, useNavigate, Navigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   UserCheck,
@@ -8,7 +9,6 @@ import {
   ArrowRight,
   RotateCcw,
   Package,
-  Users,
   Calendar,
   Download,
   History,
@@ -25,6 +25,7 @@ import TransferForm from '@/components/assignments/TransferForm';
 import { useAssets } from '@/hooks/useAssets';
 import { useEmployees } from '@/hooks/useEmployees';
 import { useAssignments } from '@/hooks/useAssignments';
+import { usePermission } from '@/hooks/usePermission';
 import type { Asset, Employee, AssetAssignment } from '@/types';
 import { cn, formatDate, formatDateTime } from '@/lib/utils';
 
@@ -34,6 +35,10 @@ export default function AssignmentsPage() {
   const { assets, loading: assetsLoading } = useAssets();
   const { employees } = useEmployees();
   const { assignments, loading: assignLoading } = useAssignments(500);
+  const { can } = usePermission();
+  const location = useLocation();
+  const navigate = useNavigate();
+
   const [tab, setTab] = useState<Tab>('current');
   const [search, setSearch] = useState('');
   const [assignOpen, setAssignOpen] = useState(false);
@@ -46,11 +51,30 @@ export default function AssignmentsPage() {
     employee: Employee;
   } | null>(null);
 
+  const canAssign = can('assignments.assign');
+  const canReturn = can('assignments.return');
+  const canTransfer = can('assignments.transfer');
+
+  useEffect(() => {
+    const state = location.state as { openCreate?: boolean } | null;
+    if (state?.openCreate) {
+      if (canAssign) {
+        setAssignOpen(true);
+      } else {
+        toast.error("You don't have permission to assign assets");
+      }
+      navigate(location.pathname, { replace: true, state: {} });
+    }
+  }, [location.state, location.pathname, navigate, canAssign]);
+
+  if (!can('assignments.view')) {
+    return <Navigate to="/" replace />;
+  }
+
   const employeeMap = useMemo(() => {
     return new Map(employees.map((e) => [e.id, e]));
   }, [employees]);
 
-  // Current assignments = assets with status='assigned' and assignedTo set
   const currentAssignments = useMemo(() => {
     return assets
       .filter((a) => a.status === 'assigned' && a.assignedTo)
@@ -139,10 +163,12 @@ export default function AssignmentsPage() {
             <Download className="w-4 h-4" />
             Export
           </button>
-          <button onClick={() => setAssignOpen(true)} className="btn-primary">
-            <Plus className="w-4 h-4" />
-            Assign Asset
-          </button>
+          {canAssign && (
+            <button onClick={() => setAssignOpen(true)} className="btn-primary">
+              <Plus className="w-4 h-4" />
+              Assign Asset
+            </button>
+          )}
         </div>
       </div>
 
@@ -225,12 +251,20 @@ export default function AssignmentsPage() {
           <EmptyState
             icon={UserCheck}
             title="No active assignments"
-            description="Assign an asset to an employee to see it here."
-            action={{
-              label: 'Assign Asset',
-              icon: Plus,
-              onClick: () => setAssignOpen(true),
-            }}
+            description={
+              canAssign
+                ? 'Assign an asset to an employee to see it here.'
+                : 'No active assignments. Contact an admin to assign.'
+            }
+            action={
+              canAssign
+                ? {
+                    label: 'Assign Asset',
+                    icon: Plus,
+                    onClick: () => setAssignOpen(true),
+                  }
+                : undefined
+            }
           />
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -240,6 +274,8 @@ export default function AssignmentsPage() {
                   key={asset.id}
                   asset={asset}
                   employee={employee!}
+                  canReturn={canReturn}
+                  canTransfer={canTransfer}
                   onReturn={() => setReturnFor({ asset, employee: employee! })}
                   onTransfer={() =>
                     setTransferFor({ asset, employee: employee! })
@@ -357,14 +393,20 @@ function StatChip({
 function AssignmentCard({
   asset,
   employee,
+  canReturn,
+  canTransfer,
   onReturn,
   onTransfer,
 }: {
   asset: Asset;
   employee: Employee;
+  canReturn: boolean;
+  canTransfer: boolean;
   onReturn: () => void;
   onTransfer: () => void;
 }) {
+  const hasAnyAction = canReturn || canTransfer;
+
   return (
     <motion.div
       layout
@@ -412,22 +454,28 @@ function AssignmentCard({
         </div>
       </div>
 
-      <div className="flex gap-2 pt-3 border-t border-brand-choco/8">
-        <button
-          onClick={onReturn}
-          className="btn-secondary flex-1 !py-2 !text-sm"
-        >
-          <RotateCcw className="w-3.5 h-3.5" />
-          Return
-        </button>
-        <button
-          onClick={onTransfer}
-          className="btn-primary flex-1 !py-2 !text-sm"
-        >
-          <ArrowRight className="w-3.5 h-3.5" />
-          Transfer
-        </button>
-      </div>
+      {hasAnyAction && (
+        <div className="flex gap-2 pt-3 border-t border-brand-choco/8">
+          {canReturn && (
+            <button
+              onClick={onReturn}
+              className="btn-secondary flex-1 !py-2 !text-sm"
+            >
+              <RotateCcw className="w-3.5 h-3.5" />
+              Return
+            </button>
+          )}
+          {canTransfer && (
+            <button
+              onClick={onTransfer}
+              className="btn-primary flex-1 !py-2 !text-sm"
+            >
+              <ArrowRight className="w-3.5 h-3.5" />
+              Transfer
+            </button>
+          )}
+        </div>
+      )}
     </motion.div>
   );
 }

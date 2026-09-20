@@ -19,6 +19,7 @@ import {
   Building2,
   ArrowDownToLine,
   ArrowUpFromLine,
+  Target,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { parseZohoInvoice, type ParsedInvoice } from '@/lib/pdfParser';
@@ -57,8 +58,13 @@ export default function InvoiceUploadFlow({ onClose }: Props) {
   const [customerName, setCustomerName] = useState('');
   const [customerGstin, setCustomerGstin] = useState('');
   const [totalAmount, setTotalAmount] = useState(0);
+  const [subTotal, setSubTotal] = useState(0);
+  const [taxAmount, setTaxAmount] = useState(0);
+
   const [items, setItems] = useState<VerifiedItem[]>([]);
   const [direction, setDirection] = useState<'in' | 'out'>('out');
+  const [directionReason, setDirectionReason] = useState<string>('');
+  const [directionOverridden, setDirectionOverridden] = useState(false);
   const [processing, setProcessing] = useState(false);
 
   const productMap = useMemo(() => {
@@ -67,12 +73,10 @@ export default function InvoiceUploadFlow({ onClose }: Props) {
 
   const autoMatch = (name: string): Product | undefined => {
     const q = name.toLowerCase().trim();
-    // Exact match on name or SKU
     let match = products.find(
       (p) => p.name.toLowerCase() === q || p.sku.toLowerCase() === q
     );
     if (match) return match;
-    // Contains match
     match = products.find(
       (p) => p.name.toLowerCase().includes(q) || q.includes(p.name.toLowerCase())
     );
@@ -116,6 +120,14 @@ export default function InvoiceUploadFlow({ onClose }: Props) {
       setCustomerName(result.customerName ?? '');
       setCustomerGstin(result.customerGstin ?? '');
       setTotalAmount(result.totalAmount);
+      setSubTotal(result.subTotal);
+      setTaxAmount(result.taxAmount);
+
+      // 🎯 Auto-set direction from detection
+      setDirection(result.detectedDirection);
+      setDirectionReason(result.directionReason);
+      setDirectionOverridden(false);
+
       setItems(verifiedItems);
       setStep('verify');
 
@@ -124,14 +136,25 @@ export default function InvoiceUploadFlow({ onClose }: Props) {
           duration: 5000,
         });
       } else {
-        toast.success(`Extracted ${result.lineItems.length} line items`);
+        const dirLabel = result.detectedDirection === 'in' ? 'Purchase' : 'Sale';
+        toast.success(
+          `Extracted ${result.lineItems.length} items · Detected as ${dirLabel}`,
+          { duration: 4000 }
+        );
       }
     } catch (err) {
-      toast.error(
-        err instanceof Error ? err.message : 'PDF parsing failed'
-      );
+      toast.error(err instanceof Error ? err.message : 'PDF parsing failed');
     } finally {
       setParsing(false);
+    }
+  };
+
+  const handleDirectionChange = (newDir: 'in' | 'out') => {
+    setDirection(newDir);
+    if (parsed && newDir !== parsed.detectedDirection) {
+      setDirectionOverridden(true);
+    } else {
+      setDirectionOverridden(false);
     }
   };
 
@@ -247,9 +270,7 @@ export default function InvoiceUploadFlow({ onClose }: Props) {
                 i + 1
               )}
             </div>
-            <div className="text-xs font-bold capitalize hidden sm:block">
-              {s}
-            </div>
+            <div className="text-xs font-bold capitalize hidden sm:block">{s}</div>
             {i < 2 && (
               <div
                 className={cn(
@@ -280,7 +301,7 @@ export default function InvoiceUploadFlow({ onClose }: Props) {
                     <Loader2 className="w-14 h-14 text-brand-orange mx-auto mb-4 animate-spin" />
                     <p className="font-bold text-lg">Parsing PDF...</p>
                     <p className="text-sm text-brand-choco-soft mt-1">
-                      Extracting invoice data
+                      Extracting invoice data & detecting direction
                     </p>
                   </>
                 ) : (
@@ -289,13 +310,13 @@ export default function InvoiceUploadFlow({ onClose }: Props) {
                       <Upload className="w-10 h-10 text-white" />
                     </div>
                     <p className="font-display text-2xl font-bold">
-                      Upload Zoho Invoice PDF
+                      Upload Invoice PDF
                     </p>
                     <p className="text-brand-choco-soft mt-2">
                       Click here or drop your PDF file
                     </p>
                     <p className="text-xs text-brand-choco-soft mt-4">
-                      Max 5MB · PDF only · Products will be auto-matched by name
+                      Max 5MB · Auto-detects Sale vs Purchase · Products auto-matched
                     </p>
                   </>
                 )}
@@ -316,6 +337,7 @@ export default function InvoiceUploadFlow({ onClose }: Props) {
                   <p className="font-bold text-blue-900">How it works</p>
                   <ol className="text-blue-800 mt-1 space-y-0.5 list-decimal list-inside">
                     <li>Upload PDF — data extracted automatically</li>
+                    <li>System detects Sale/Purchase from seller/buyer info</li>
                     <li>Review extracted fields & match to your products</li>
                     <li>Confirm — stock updates atomically with full audit</li>
                   </ol>
@@ -346,7 +368,72 @@ export default function InvoiceUploadFlow({ onClose }: Props) {
                 <div className="text-sm">
                   <p className="font-bold text-red-900">Duplicate Invoice</p>
                   <p className="text-red-800 mt-0.5">
-                    Invoice <strong>{invoiceNumber}</strong> was already processed. Processing again will apply stock changes twice.
+                    Invoice <strong>{invoiceNumber}</strong> was already processed.
+                    Processing again will apply stock changes twice.
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {/* 🎯 AUTO-DETECTION BANNER */}
+            {directionReason && (
+              <div
+                className={cn(
+                  'p-4 rounded-2xl border-2 flex items-start gap-3',
+                  directionOverridden
+                    ? 'bg-pastel-peach/50 border-pastel-peach-deep/40'
+                    : direction === 'in'
+                    ? 'bg-pastel-green/50 border-pastel-green-deep/40'
+                    : 'bg-pastel-blue/50 border-pastel-blue-deep/40'
+                )}
+              >
+                <div
+                  className={cn(
+                    'w-9 h-9 rounded-xl flex items-center justify-center shrink-0',
+                    directionOverridden
+                      ? 'bg-orange-100'
+                      : direction === 'in'
+                      ? 'bg-green-100'
+                      : 'bg-blue-100'
+                  )}
+                >
+                  <Target
+                    className={cn(
+                      'w-5 h-5',
+                      directionOverridden
+                        ? 'text-orange-700'
+                        : direction === 'in'
+                        ? 'text-green-700'
+                        : 'text-blue-700'
+                    )}
+                  />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-bold">
+                    {directionOverridden ? (
+                      <>
+                        Manually set to:{' '}
+                        <span className="text-brand-orange">
+                          {direction === 'in' ? 'Purchase (Stock In)' : 'Sale (Stock Out)'}
+                        </span>
+                      </>
+                    ) : (
+                      <>
+                        Auto-detected:{' '}
+                        <span
+                          className={
+                            direction === 'in' ? 'text-green-800' : 'text-blue-800'
+                          }
+                        >
+                          {direction === 'in' ? 'Purchase (Stock In)' : 'Sale (Stock Out)'}
+                        </span>
+                      </>
+                    )}
+                  </p>
+                  <p className="text-xs text-brand-choco-soft mt-0.5">
+                    {directionOverridden
+                      ? `Auto-detection said: ${direction === 'in' ? 'Sale' : 'Purchase'} · You changed it manually`
+                      : directionReason}
                   </p>
                 </div>
               </div>
@@ -409,7 +496,7 @@ export default function InvoiceUploadFlow({ onClose }: Props) {
                 <div className="grid grid-cols-2 gap-2">
                   <button
                     type="button"
-                    onClick={() => setDirection('out')}
+                    onClick={() => handleDirectionChange('out')}
                     className={cn(
                       'py-2.5 rounded-2xl text-xs font-bold uppercase transition-all inline-flex items-center justify-center gap-2',
                       direction === 'out'
@@ -418,11 +505,11 @@ export default function InvoiceUploadFlow({ onClose }: Props) {
                     )}
                   >
                     <ArrowUpFromLine className="w-3.5 h-3.5" />
-                    Stock Out (Sales)
+                    Stock Out (Sale)
                   </button>
                   <button
                     type="button"
-                    onClick={() => setDirection('in')}
+                    onClick={() => handleDirectionChange('in')}
                     className={cn(
                       'py-2.5 rounded-2xl text-xs font-bold uppercase transition-all inline-flex items-center justify-center gap-2',
                       direction === 'in'
@@ -492,6 +579,24 @@ export default function InvoiceUploadFlow({ onClose }: Props) {
               </div>
             </div>
 
+            {/* 🚀 SUMMARY BLOCK (Sub Total, GST, Grand Total) */}
+            {items.length > 0 && (
+              <div className="flex flex-col items-end gap-1.5 py-4 border-t border-brand-choco/8 text-sm mt-4">
+                <div className="flex justify-between w-56 font-semibold text-brand-choco-soft">
+                  <span>Sub Total:</span>
+                  <span>{formatINR(subTotal)}</span>
+                </div>
+                <div className="flex justify-between w-56 font-semibold text-brand-choco-soft">
+                  <span>GST / Tax Amount:</span>
+                  <span>{formatINR(taxAmount)}</span>
+                </div>
+                <div className="flex justify-between w-56 font-bold text-brand-orange text-lg pt-1.5 border-t border-brand-choco/10">
+                  <span>Grand Total:</span>
+                  <span>{formatINR(totalAmount)}</span>
+                </div>
+              </div>
+            )}
+
             <div className="flex gap-3 pt-4 border-t border-brand-choco/8 sticky bottom-0 bg-white -mx-6 px-6 pb-2">
               <button
                 onClick={() => {
@@ -544,9 +649,9 @@ export default function InvoiceUploadFlow({ onClose }: Props) {
             </motion.div>
             <h2 className="font-display text-3xl font-bold">Invoice Processed!</h2>
             <p className="text-brand-choco-soft mt-2">
-              Invoice <strong>{invoiceNumber}</strong> was verified and stock
-              levels were {direction === 'in' ? 'increased' : 'decreased'}{' '}
-              for {matchedCount} product{matchedCount > 1 ? 's' : ''}.
+              Invoice <strong>{invoiceNumber}</strong> was verified and stock levels
+              were {direction === 'in' ? 'increased' : 'decreased'} for{' '}
+              {matchedCount} product{matchedCount > 1 ? 's' : ''}.
             </p>
             <button onClick={onClose} className="btn-primary mt-6">
               Done
@@ -601,14 +706,12 @@ function LineItemRow({
 
   const filteredProducts = useMemo(() => {
     const q = productSearch.toLowerCase();
-    if (!q)
-      return products.filter((p) => p.status === 'active').slice(0, 10);
+    if (!q) return products.filter((p) => p.status === 'active').slice(0, 10);
     return products
       .filter(
         (p) =>
           p.status === 'active' &&
-          (p.name.toLowerCase().includes(q) ||
-            p.sku.toLowerCase().includes(q))
+          (p.name.toLowerCase().includes(q) || p.sku.toLowerCase().includes(q))
       )
       .slice(0, 10);
   }, [products, productSearch]);
@@ -629,7 +732,11 @@ function LineItemRow({
             type="text"
             value={item.productName}
             onChange={(e) =>
-              onUpdate({ productName: e.target.value, matchStatus: 'none', matchedProductId: undefined })
+              onUpdate({
+                productName: e.target.value,
+                matchStatus: 'none',
+                matchedProductId: undefined,
+              })
             }
             className="w-full px-3 py-1.5 rounded-lg bg-white text-sm font-semibold border border-transparent focus:border-brand-orange outline-none"
             placeholder="Product name"

@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   LayoutDashboard,
   Package,
+  Boxes,
   ArrowLeftRight,
   FileText,
   Users,
@@ -18,39 +19,122 @@ import {
   ChevronDown,
   Command,
   Plus,
+  Shield,
+  ShieldCheck,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
+import { usePermission } from '@/hooks/usePermission';
 import { useGlobalSearch, type SearchResult } from '@/hooks/useGlobalSearch';
+import {
+  QuickAddProvider,
+  useQuickAdd,
+  type QuickAddType,
+} from '@/contexts/QuickAddContext';
+import { ROLE_LABELS } from '@/lib/permissions';
 import { cn } from '@/lib/utils';
 import toast from 'react-hot-toast';
 import Logo from '@/components/ui/Logo';
 
-const navItems = [
-  { to: '/', label: 'Dashboard', icon: LayoutDashboard, end: true },
-  { to: '/products', label: 'Products', icon: Package },
-  { to: '/stock', label: 'Stock Movement', icon: ArrowLeftRight },
-  { to: '/invoices', label: 'Zoho Invoices', icon: FileText },
-  { to: '/employees', label: 'Employees', icon: Users },
-  { to: '/assets', label: 'Assets', icon: Laptop },
-  { to: '/assignments', label: 'Assignments', icon: UserCheck },
-  { to: '/audit', label: 'Audit Log', icon: History },
+interface NavItem {
+  to: string;
+  label: string;
+  icon: React.ComponentType<{ className?: string }>;
+  end?: boolean;
+  viewPerm: string;
+  createPerm?: string;
+  /** If present, sidebar + opens a global modal INSTEAD of navigating */
+  quickAddType?: QuickAddType;
+  children?: NavItem[];
+}
+
+const navItems: NavItem[] = [
+  {
+    to: '/',
+    label: 'Dashboard',
+    icon: LayoutDashboard,
+    end: true,
+    viewPerm: 'dashboard.view',
+  },
+  {
+    to: '/products',
+    label: 'Products',
+    icon: Package,
+    viewPerm: 'products.view',
+    createPerm: 'products.create',
+    quickAddType: 'products',
+    children: [
+      {
+        to: '/kits',
+        label: 'Kits',
+        icon: Boxes,
+        viewPerm: 'kits.view',
+        createPerm: 'kits.create',
+        quickAddType: 'kits',
+      },
+    ],
+  },
+  {
+    to: '/stock',
+    label: 'Stock Movement',
+    icon: ArrowLeftRight,
+    viewPerm: 'stock.view',
+    createPerm: 'stock.stockIn',
+    quickAddType: 'stock',
+  },
+  {
+    to: '/invoices',
+    label: 'Invoices',
+    icon: FileText,
+    viewPerm: 'invoices.view',
+    createPerm: 'invoices.upload',
+    quickAddType: 'invoices',
+  },
+  {
+    to: '/employees',
+    label: 'Employees',
+    icon: Users,
+    viewPerm: 'employees.view',
+    createPerm: 'employees.create',
+    quickAddType: 'employees',
+  },
+  {
+    to: '/assets',
+    label: 'Assets',
+    icon: Laptop,
+    viewPerm: 'assets.view',
+    createPerm: 'assets.create',
+    quickAddType: 'assets',
+  },
+  {
+    to: '/assignments',
+    label: 'Assignments',
+    icon: UserCheck,
+    viewPerm: 'assignments.view',
+    createPerm: 'assignments.assign',
+    quickAddType: 'assignments',
+  },
+  // Users & Roles removed from sidebar — accessible via user dropdown (top-right) instead
 ];
 
-// Quick actions (page-specific new/create shortcuts)
 const QUICK_ACTIONS: {
   label: string;
   icon: React.ComponentType<{ className?: string }>;
   href: string;
+  perm: string;
+  quickAddType?: QuickAddType;
 }[] = [
-  { label: 'New Product', icon: Package, href: '/products' },
-  { label: 'Stock Movement', icon: ArrowLeftRight, href: '/stock' },
-  { label: 'Upload Invoice', icon: FileText, href: '/invoices' },
-  { label: 'Register Asset', icon: Laptop, href: '/assets' },
-  { label: 'Assign Asset', icon: UserCheck, href: '/assignments' },
+  { label: 'New Product', icon: Package, href: '/products', perm: 'products.create', quickAddType: 'products' },
+  { label: 'New Kit', icon: Boxes, href: '/kits', perm: 'kits.create', quickAddType: 'kits' },
+  { label: 'Stock Movement', icon: ArrowLeftRight, href: '/stock', perm: 'stock.stockIn', quickAddType: 'stock' },
+  { label: 'Upload Invoice', icon: FileText, href: '/invoices', perm: 'invoices.upload', quickAddType: 'invoices' },
+  { label: 'Add Employee', icon: Users, href: '/employees', perm: 'employees.create', quickAddType: 'employees' },
+  { label: 'Register Asset', icon: Laptop, href: '/assets', perm: 'assets.create', quickAddType: 'assets' },
+  { label: 'Assign Asset', icon: UserCheck, href: '/assignments', perm: 'assignments.assign', quickAddType: 'assignments' },
+  { label: 'New User', icon: Shield, href: '/users', perm: 'users.create', quickAddType: 'users' },
 ];
 
 export default function DashboardLayout() {
-  const { user, logout } = useAuth();
+  const { user, userDoc, logout } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -61,101 +145,183 @@ export default function DashboardLayout() {
     navigate('/login');
   };
 
-  // Get page title from current path
   const pageTitle = getPageTitle(location.pathname);
 
   return (
-    <div className="min-h-screen bg-brand-cream flex">
-      {/* Sidebar — desktop */}
-      <aside className="hidden lg:flex lg:flex-col w-72 bg-white border-r border-brand-choco/5 sticky top-0 h-screen">
-        <SidebarContent onLogout={handleLogout} userEmail={user?.email ?? ''} />
-      </aside>
+    <QuickAddProvider>
+      <div className="min-h-screen bg-brand-cream flex">
+        <aside className="hidden lg:flex lg:flex-col w-72 bg-white border-r border-brand-choco/5 sticky top-0 h-screen">
+          <SidebarContent
+            onLogout={handleLogout}
+            userEmail={user?.email ?? ''}
+            userName={userDoc?.name ?? 'User'}
+            userRole={userDoc?.role ?? null}
+          />
+        </aside>
 
-      {/* Sidebar — mobile */}
-      <AnimatePresence>
-        {sidebarOpen && (
-          <>
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              onClick={() => setSidebarOpen(false)}
-              className="fixed inset-0 bg-brand-choco/40 backdrop-blur-sm z-40 lg:hidden"
-            />
-            <motion.aside
-              initial={{ x: '-100%' }}
-              animate={{ x: 0 }}
-              exit={{ x: '-100%' }}
-              transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-              className="fixed inset-y-0 left-0 w-72 bg-white z-50 lg:hidden flex flex-col"
-            >
-              <SidebarContent
-                onLogout={handleLogout}
-                userEmail={user?.email ?? ''}
-                onNavigate={() => setSidebarOpen(false)}
+        <AnimatePresence>
+          {sidebarOpen && (
+            <>
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                onClick={() => setSidebarOpen(false)}
+                className="fixed inset-0 bg-brand-choco/40 backdrop-blur-sm z-40 lg:hidden"
               />
-            </motion.aside>
-          </>
-        )}
-      </AnimatePresence>
+              <motion.aside
+                initial={{ x: '-100%' }}
+                animate={{ x: 0 }}
+                exit={{ x: '-100%' }}
+                transition={{ type: 'spring', damping: 25, stiffness: 200 }}
+                className="fixed inset-y-0 left-0 w-72 bg-white z-50 lg:hidden flex flex-col"
+              >
+                <SidebarContent
+                  onLogout={handleLogout}
+                  userEmail={user?.email ?? ''}
+                  userName={userDoc?.name ?? 'User'}
+                  userRole={userDoc?.role ?? null}
+                  onNavigate={() => setSidebarOpen(false)}
+                />
+              </motion.aside>
+            </>
+          )}
+        </AnimatePresence>
 
-      {/* Main */}
-      <div className="flex-1 flex flex-col min-w-0">
-        {/* Top bar */}
-        <header className="sticky top-0 z-30 bg-brand-cream/70 backdrop-blur-xl border-b border-brand-choco/5">
-          <div className="flex items-center gap-3 px-4 lg:px-8 h-20">
-            {/* Mobile menu button */}
-            <button
-              onClick={() => setSidebarOpen(true)}
-              className="lg:hidden w-11 h-11 rounded-2xl bg-white border border-brand-choco/8 flex items-center justify-center hover:bg-brand-cream-dark transition"
-            >
-              <Menu className="w-5 h-5" />
-            </button>
+        <div className="flex-1 flex flex-col min-w-0">
+          <header className="sticky top-0 z-30 bg-brand-cream/70 backdrop-blur-xl border-b border-brand-choco/5">
+            <div className="flex items-center gap-3 px-4 lg:px-8 h-20">
+              <button
+                onClick={() => setSidebarOpen(true)}
+                className="lg:hidden w-11 h-11 rounded-2xl bg-white border border-brand-choco/8 flex items-center justify-center hover:bg-brand-cream-dark transition"
+              >
+                <Menu className="w-5 h-5" />
+              </button>
 
-            {/* Page title (desktop) */}
-            <div className="hidden lg:flex flex-col mr-2">
-              <span className="text-[10px] font-bold uppercase tracking-widest text-brand-choco-soft">
-                {pageTitle.category}
-              </span>
-              <h2 className="font-display font-bold text-lg leading-tight">
-                {pageTitle.title}
-              </h2>
+              <div className="hidden lg:flex flex-col mr-2">
+                <span className="text-[10px] font-bold uppercase tracking-widest text-brand-choco-soft">
+                  {pageTitle.category}
+                </span>
+                <h2 className="font-display font-bold text-lg leading-tight">
+                  {pageTitle.title}
+                </h2>
+              </div>
+
+              <div className="flex-1" />
+
+              <GlobalSearch />
+              <QuickActionsMenu />
+              <UserMenu
+                userEmail={user?.email ?? ''}
+                userName={userDoc?.name ?? 'User'}
+                userRole={userDoc?.role ?? null}
+                onLogout={handleLogout}
+              />
             </div>
+          </header>
 
-            <div className="flex-1" />
-
-            {/* Global search */}
-            <GlobalSearch />
-
-            {/* Quick actions dropdown */}
-            <QuickActionsMenu />
-
-            {/* User menu */}
-            <UserMenu userEmail={user?.email ?? ''} onLogout={handleLogout} />
-          </div>
-        </header>
-
-        <main className="flex-1 p-4 lg:p-8">
-          <Outlet />
-        </main>
+          <main className="flex-1 p-4 lg:p-8">
+            <Outlet />
+          </main>
+        </div>
       </div>
-    </div>
+    </QuickAddProvider>
   );
 }
 
-// Small helper for page title
 function getPageTitle(path: string) {
   const map: Record<string, { category: string; title: string }> = {
     '/': { category: 'Overview', title: 'Dashboard' },
     '/products': { category: 'Inventory', title: 'Products' },
+    '/kits': { category: 'Inventory', title: 'Kits' },
     '/stock': { category: 'Inventory', title: 'Stock Movement' },
-    '/invoices': { category: 'Inventory', title: 'Zoho Invoices' },
+    '/invoices': { category: 'Inventory', title: 'Invoices' },
     '/employees': { category: 'Team', title: 'Employees' },
     '/assets': { category: 'Assets', title: 'Company Assets' },
     '/assignments': { category: 'Assets', title: 'Assignments' },
     '/audit': { category: 'Compliance', title: 'Audit Log' },
+    '/users': { category: 'Access Control', title: 'Users & Roles' },
   };
   return map[path] ?? { category: 'Portal', title: 'STEMmantra' };
+}
+
+/** ------------- Sidebar Item ------------- */
+function SidebarNavItem({
+  item,
+  onNavigate,
+  indent,
+}: {
+  item: NavItem;
+  onNavigate?: () => void;
+  indent?: boolean;
+}) {
+  const location = useLocation();
+  const navigate = useNavigate();
+  const { can } = usePermission();
+  const { open: openQuickAdd, supports } = useQuickAdd();
+
+  const isActive = location.pathname === item.to;
+
+  const handleQuickAdd = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (item.quickAddType && supports(item.quickAddType)) {
+      openQuickAdd(item.quickAddType);
+    } else {
+      navigate(item.to, { state: { openCreate: true } });
+    }
+    onNavigate?.();
+  };
+
+  const showCreateButton = item.createPerm && can(item.createPerm) && !isActive;
+
+  return (
+    <div className={cn('group relative', indent && 'ml-6')}>
+      <NavLink
+        to={item.to}
+        end={item.end}
+        onClick={onNavigate}
+        className={({ isActive: navActive }) =>
+          cn(
+            'flex items-center gap-3 px-3 py-2.5 rounded-2xl text-sm font-semibold transition-all pr-10',
+            navActive
+              ? 'bg-gradient-to-r from-brand-orange to-brand-orange-light text-white shadow-lg shadow-brand-orange/25'
+              : 'text-brand-choco-light hover:bg-brand-cream-dark'
+          )
+        }
+      >
+        {({ isActive: navActive }) => (
+          <>
+            <item.icon
+              className={cn(
+                'w-5 h-5 transition shrink-0',
+                navActive
+                  ? 'text-white'
+                  : 'text-brand-choco-soft group-hover:text-brand-orange'
+              )}
+            />
+            <span className="flex-1 truncate">{item.label}</span>
+            {navActive && (
+              <motion.div
+                layoutId="activeDot"
+                className="w-1.5 h-1.5 rounded-full bg-white shrink-0"
+              />
+            )}
+          </>
+        )}
+      </NavLink>
+
+      {showCreateButton && (
+        <button
+          onClick={handleQuickAdd}
+          title={`Add new ${item.label.toLowerCase()}`}
+          className="absolute right-2 top-1/2 -translate-y-1/2 w-7 h-7 rounded-lg bg-white shadow-md border border-brand-choco/8 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all hover:bg-brand-orange hover:text-white hover:border-brand-orange hover:scale-105 z-10"
+        >
+          <Plus className="w-3.5 h-3.5" />
+        </button>
+      )}
+    </div>
+  );
 }
 
 /** ------------- Global Search ------------- */
@@ -312,6 +478,8 @@ function GlobalSearch() {
 function QuickActionsMenu() {
   const [open, setOpen] = useState(false);
   const navigate = useNavigate();
+  const { can } = usePermission();
+  const { open: openQuickAdd, supports } = useQuickAdd();
   const wrapRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -322,6 +490,19 @@ function QuickActionsMenu() {
     document.addEventListener('mousedown', onClickOutside);
     return () => document.removeEventListener('mousedown', onClickOutside);
   }, []);
+
+  const allowedActions = QUICK_ACTIONS.filter((a) => can(a.perm));
+
+  if (allowedActions.length === 0) return null;
+
+  const handleAction = (action: typeof QUICK_ACTIONS[number]) => {
+    if (action.quickAddType && supports(action.quickAddType)) {
+      openQuickAdd(action.quickAddType);
+    } else {
+      navigate(action.href, { state: { openCreate: true } });
+    }
+    setOpen(false);
+  };
 
   return (
     <div ref={wrapRef} className="relative">
@@ -350,13 +531,10 @@ function QuickActionsMenu() {
             <p className="text-[10px] font-bold uppercase tracking-widest text-brand-choco-soft px-4 py-2">
               Quick Actions
             </p>
-            {QUICK_ACTIONS.map((action) => (
+            {allowedActions.map((action) => (
               <button
                 key={action.href}
-                onClick={() => {
-                  navigate(action.href);
-                  setOpen(false);
-                }}
+                onClick={() => handleAction(action)}
                 className="w-full flex items-center gap-3 px-4 py-2.5 text-sm font-semibold hover:bg-brand-cream-dark transition text-left"
               >
                 <div className="w-8 h-8 rounded-xl bg-brand-orange-100 flex items-center justify-center">
@@ -372,15 +550,21 @@ function QuickActionsMenu() {
   );
 }
 
-/** ------------- User Menu ------------- */
+/** ------------- User Menu (with Audit Log link) ------------- */
 function UserMenu({
   userEmail,
+  userName,
+  userRole,
   onLogout,
 }: {
   userEmail: string;
+  userName: string;
+  userRole: string | null;
   onLogout: () => void;
 }) {
   const [open, setOpen] = useState(false);
+  const navigate = useNavigate();
+  const { can } = usePermission();
   const wrapRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -392,6 +576,11 @@ function UserMenu({
     return () => document.removeEventListener('mousedown', onClickOutside);
   }, []);
 
+  const initial = (userName?.[0] ?? userEmail?.[0] ?? '?').toUpperCase();
+  const roleLabel = userRole
+    ? ROLE_LABELS[userRole as keyof typeof ROLE_LABELS]
+    : 'Signed in';
+
   return (
     <div ref={wrapRef} className="relative">
       <button
@@ -399,12 +588,12 @@ function UserMenu({
         className="flex items-center gap-2 h-12 pl-1 pr-3 rounded-2xl bg-white border-2 border-brand-choco/8 hover:border-brand-orange/40 transition shadow-sm"
       >
         <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-brand-orange-light to-brand-orange flex items-center justify-center text-white font-bold text-sm shadow-md">
-          {userEmail[0]?.toUpperCase()}
+          {initial}
         </div>
         <div className="hidden md:block text-left">
-          <p className="text-sm font-bold leading-tight">Admin</p>
+          <p className="text-sm font-bold leading-tight">{userName}</p>
           <p className="text-[10px] text-brand-choco-soft leading-tight">
-            Signed in
+            {roleLabel}
           </p>
         </div>
         <ChevronDown
@@ -421,19 +610,26 @@ function UserMenu({
             initial={{ opacity: 0, y: -8, scale: 0.95 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: -8, scale: 0.95 }}
-            className="absolute right-0 top-full mt-2 w-64 bg-white rounded-2xl shadow-2xl border border-brand-choco/8 overflow-hidden z-50"
+            className="absolute right-0 top-full mt-2 w-72 bg-white rounded-2xl shadow-2xl border border-brand-choco/8 overflow-hidden z-50"
           >
-            {/* User info header */}
             <div className="p-4 bg-gradient-to-br from-brand-orange-100 to-brand-cream-deep">
               <div className="flex items-center gap-3">
                 <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-brand-orange-light to-brand-orange flex items-center justify-center text-white font-bold text-lg shadow-md">
-                  {userEmail[0]?.toUpperCase()}
+                  {initial}
                 </div>
-                <div className="min-w-0">
-                  <p className="text-sm font-bold truncate">Admin</p>
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-bold truncate">{userName}</p>
                   <p className="text-xs text-brand-choco-soft truncate">
                     {userEmail}
                   </p>
+                  <span className="inline-flex items-center gap-1 mt-1 px-2 py-0.5 rounded-full bg-white/70 text-[10px] font-bold text-brand-choco">
+                    {userRole === 'super_admin' ? (
+                      <ShieldCheck className="w-2.5 h-2.5" />
+                    ) : (
+                      <Shield className="w-2.5 h-2.5" />
+                    )}
+                    {roleLabel}
+                  </span>
                 </div>
               </div>
               <div className="flex items-center gap-1.5 mt-3 text-[10px] font-bold text-green-700 bg-white/60 backdrop-blur-sm px-2 py-1 rounded-full w-fit">
@@ -442,8 +638,51 @@ function UserMenu({
               </div>
             </div>
 
-            {/* Actions */}
             <div className="p-2">
+              {can('audit.view') && (
+                <button
+                  onClick={() => {
+                    navigate('/audit');
+                    setOpen(false);
+                  }}
+                  className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold text-brand-choco hover:bg-brand-cream-dark transition text-left"
+                >
+                  <div className="w-8 h-8 rounded-xl bg-brand-orange-100 flex items-center justify-center">
+                    <History className="w-4 h-4 text-brand-orange" />
+                  </div>
+                  <div className="flex-1">
+                    <p className="text-sm font-bold leading-tight">Audit Log</p>
+                    <p className="text-[10px] text-brand-choco-soft leading-tight mt-0.5">
+                      View all system activity
+                    </p>
+                  </div>
+                </button>
+              )}
+
+              {can('users.view') && (
+                <button
+                  onClick={() => {
+                    navigate('/users');
+                    setOpen(false);
+                  }}
+                  className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold text-brand-choco hover:bg-brand-cream-dark transition text-left"
+                >
+                  <div className="w-8 h-8 rounded-xl bg-brand-orange-100 flex items-center justify-center">
+                    <Shield className="w-4 h-4 text-brand-orange" />
+                  </div>
+                  <div className="flex-1">
+                    <p className="text-sm font-bold leading-tight">
+                      Users & Roles
+                    </p>
+                    <p className="text-[10px] text-brand-choco-soft leading-tight mt-0.5">
+                      Manage access
+                    </p>
+                  </div>
+                </button>
+              )}
+
+              <div className="h-px bg-brand-choco/8 my-1" />
+
               <button
                 onClick={onLogout}
                 className="w-full flex items-center gap-2 px-3 py-2.5 rounded-xl text-sm font-semibold text-red-600 hover:bg-red-50 transition"
@@ -463,15 +702,32 @@ function UserMenu({
 function SidebarContent({
   onLogout,
   userEmail,
+  userName,
+  userRole,
   onNavigate,
 }: {
   onLogout: () => void;
   userEmail: string;
+  userName: string;
+  userRole: string | null;
   onNavigate?: () => void;
 }) {
+  const { can } = usePermission();
+
+  const visibleItems = navItems
+    .filter((item) => can(item.viewPerm))
+    .map((item) => ({
+      ...item,
+      children: item.children?.filter((c) => can(c.viewPerm)) ?? [],
+    }));
+
+  const initial = (userName?.[0] ?? userEmail?.[0] ?? '?').toUpperCase();
+  const roleLabel = userRole
+    ? ROLE_LABELS[userRole as keyof typeof ROLE_LABELS]
+    : '';
+
   return (
     <>
-      {/* Logo section — bigger, prominent */}
       <div className="p-6 pb-4 flex items-center justify-between">
         <Logo variant="wide" size="lg" />
         {onNavigate && (
@@ -493,46 +749,23 @@ function SidebarContent({
           </p>
         </div>
         <div className="space-y-1">
-          {navItems.map((item, idx) => (
+          {visibleItems.map((item, idx) => (
             <motion.div
               key={item.to}
               initial={{ opacity: 0, x: -10 }}
               animate={{ opacity: 1, x: 0 }}
               transition={{ delay: idx * 0.03 }}
+              className="space-y-1"
             >
-              <NavLink
-                to={item.to}
-                end={item.end}
-                onClick={onNavigate}
-                className={({ isActive }) =>
-                  cn(
-                    'group flex items-center gap-3 px-3 py-2.5 rounded-2xl text-sm font-semibold transition-all',
-                    isActive
-                      ? 'bg-gradient-to-r from-brand-orange to-brand-orange-light text-white shadow-lg shadow-brand-orange/25'
-                      : 'text-brand-choco-light hover:bg-brand-cream-dark'
-                  )
-                }
-              >
-                {({ isActive }) => (
-                  <>
-                    <item.icon
-                      className={cn(
-                        'w-5 h-5 transition',
-                        isActive
-                          ? 'text-white'
-                          : 'text-brand-choco-soft group-hover:text-brand-orange'
-                      )}
-                    />
-                    {item.label}
-                    {isActive && (
-                      <motion.div
-                        layoutId="activeDot"
-                        className="ml-auto w-1.5 h-1.5 rounded-full bg-white"
-                      />
-                    )}
-                  </>
-                )}
-              </NavLink>
+              <SidebarNavItem item={item} onNavigate={onNavigate} />
+              {item.children?.map((child) => (
+                <SidebarNavItem
+                  key={child.to}
+                  item={child}
+                  onNavigate={onNavigate}
+                  indent
+                />
+              ))}
             </motion.div>
           ))}
         </div>
@@ -542,13 +775,23 @@ function SidebarContent({
         <div className="p-4 rounded-2xl bg-gradient-to-br from-brand-cream-dark to-brand-cream-deep border border-brand-orange/10">
           <div className="flex items-center gap-3 mb-3">
             <div className="w-10 h-10 rounded-full bg-white flex items-center justify-center text-brand-orange font-bold">
-              {userEmail[0]?.toUpperCase()}
+              {initial}
             </div>
-            <div className="min-w-0">
-              <p className="text-sm font-bold truncate">Admin</p>
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-bold truncate">{userName}</p>
               <p className="text-xs text-brand-choco-soft truncate">
                 {userEmail}
               </p>
+              {roleLabel && (
+                <span className="inline-flex items-center gap-1 mt-1 px-2 py-0.5 rounded-full bg-white text-[9px] font-bold text-brand-choco">
+                  {userRole === 'super_admin' ? (
+                    <ShieldCheck className="w-2.5 h-2.5" />
+                  ) : (
+                    <Shield className="w-2.5 h-2.5" />
+                  )}
+                  {roleLabel}
+                </span>
+              )}
             </div>
           </div>
           <button

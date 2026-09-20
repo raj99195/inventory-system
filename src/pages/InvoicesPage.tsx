@@ -1,4 +1,5 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { useLocation, useNavigate, Navigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   FileText,
@@ -26,6 +27,7 @@ import EmptyState from '@/components/ui/EmptyState';
 import { ProductRowSkeleton } from '@/components/ui/Skeleton';
 import InvoiceUploadFlow from '@/components/invoices/InvoiceUploadFlow';
 import { useInvoices, deleteInvoice } from '@/hooks/useInvoices';
+import { usePermission } from '@/hooks/usePermission';
 import type { Invoice, InvoiceStatus } from '@/types';
 import { cn, formatDate, formatDateTime, formatINR } from '@/lib/utils';
 
@@ -46,6 +48,10 @@ const STATUS_META: Record<
 
 export default function InvoicesPage() {
   const { invoices, loading } = useInvoices(300);
+  const { can } = usePermission();
+  const location = useLocation();
+  const navigate = useNavigate();
+
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<FilterStatus>('all');
   const [uploadOpen, setUploadOpen] = useState(false);
@@ -54,6 +60,25 @@ export default function InvoicesPage() {
   const [deleting, setDeleting] = useState<Invoice | null>(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
   const [menuOpen, setMenuOpen] = useState<string | null>(null);
+
+  const canUpload = can('invoices.upload');
+  const canDeletePerm = can('invoices.delete');
+
+  useEffect(() => {
+    const state = location.state as { openCreate?: boolean } | null;
+    if (state?.openCreate) {
+      if (canUpload) {
+        setUploadOpen(true);
+      } else {
+        toast.error("You don't have permission to upload invoices");
+      }
+      navigate(location.pathname, { replace: true, state: {} });
+    }
+  }, [location.state, location.pathname, navigate, canUpload]);
+
+  if (!can('invoices.view')) {
+    return <Navigate to="/" replace />;
+  }
 
   const filtered = useMemo(() => {
     return invoices.filter((inv) => {
@@ -82,6 +107,11 @@ export default function InvoicesPage() {
 
   const handleDelete = async () => {
     if (!deleting) return;
+    if (!canDeletePerm) {
+      toast.error("You don't have permission to delete invoices");
+      setDeleting(null);
+      return;
+    }
     setDeleteLoading(true);
     try {
       await deleteInvoice(deleting);
@@ -120,13 +150,13 @@ export default function InvoicesPage() {
         <div>
           <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-brand-orange-50 text-brand-orange-dark text-xs font-bold uppercase tracking-wider mb-3">
             <span className="w-1.5 h-1.5 rounded-full bg-brand-orange" />
-            Zoho Sync
+            Invoice Manager
           </div>
           <h1 className="font-display text-4xl lg:text-5xl font-bold">
-            Zoho Invoices
+            Invoices
           </h1>
           <p className="text-brand-choco-soft mt-2">
-            Upload Zoho invoice PDFs — auto-extract & update stock.
+            Upload invoice PDFs — auto-extract & update stock.
           </p>
         </div>
         <div className="flex items-center gap-3">
@@ -138,10 +168,12 @@ export default function InvoicesPage() {
             <Download className="w-4 h-4" />
             Export
           </button>
-          <button onClick={() => setUploadOpen(true)} className="btn-primary">
-            <Upload className="w-4 h-4" />
-            Upload PDF
-          </button>
+          {canUpload && (
+            <button onClick={() => setUploadOpen(true)} className="btn-primary">
+              <Upload className="w-4 h-4" />
+              Upload PDF
+            </button>
+          )}
         </div>
       </div>
 
@@ -223,11 +255,13 @@ export default function InvoicesPage() {
           title={invoices.length === 0 ? 'No invoices yet' : 'No matches'}
           description={
             invoices.length === 0
-              ? 'Upload your first Zoho invoice PDF to start.'
+              ? canUpload
+                ? 'Upload your first invoice PDF to start.'
+                : 'No invoices yet. Contact an admin to upload.'
               : 'Try changing search or filter.'
           }
           action={
-            invoices.length === 0
+            invoices.length === 0 && canUpload
               ? {
                   label: 'Upload First Invoice',
                   icon: Upload,
@@ -243,6 +277,7 @@ export default function InvoicesPage() {
               <InvoiceRow
                 key={inv.id}
                 invoice={inv}
+                canDelete={canDeletePerm}
                 onView={(i) => {
                   setSelected(i);
                   setDetailOpen(true);
@@ -260,7 +295,7 @@ export default function InvoicesPage() {
       <Modal
         open={uploadOpen}
         onClose={() => setUploadOpen(false)}
-        title="Import Zoho Invoice"
+        title="Import Invoice"
         description="PDF → auto extract → verify → update stock"
         size="xl"
         closeOnOverlay={false}
@@ -328,12 +363,14 @@ function StatChip({
 
 function InvoiceRow({
   invoice,
+  canDelete,
   onView,
   onDelete,
   menuOpen,
   setMenuOpen,
 }: {
   invoice: Invoice;
+  canDelete: boolean;
   onView: (i: Invoice) => void;
   onDelete: (i: Invoice) => void;
   menuOpen: boolean;
@@ -431,16 +468,20 @@ function InvoiceRow({
                 >
                   <Eye className="w-4 h-4" /> View
                 </button>
-                <div className="h-px bg-brand-choco/8 my-1" />
-                <button
-                  onClick={() => {
-                    onDelete(invoice);
-                    setMenuOpen(false);
-                  }}
-                  className="w-full flex items-center gap-2 px-3 py-2 text-sm font-semibold text-red-600 hover:bg-red-50"
-                >
-                  <Trash2 className="w-4 h-4" /> Delete
-                </button>
+                {canDelete && (
+                  <>
+                    <div className="h-px bg-brand-choco/8 my-1" />
+                    <button
+                      onClick={() => {
+                        onDelete(invoice);
+                        setMenuOpen(false);
+                      }}
+                      className="w-full flex items-center gap-2 px-3 py-2 text-sm font-semibold text-red-600 hover:bg-red-50"
+                    >
+                      <Trash2 className="w-4 h-4" /> Delete
+                    </button>
+                  </>
+                )}
               </motion.div>
             </>
           )}
@@ -484,7 +525,6 @@ function InvoiceDetail({ invoice }: { invoice: Invoice }) {
         </div>
       </div>
 
-      {/* Customer */}
       {(invoice.customerName || invoice.customerGstin) && (
         <div className="p-4 rounded-2xl bg-brand-cream-dark/50">
           <p className="text-xs font-bold uppercase text-brand-choco-soft mb-2">
@@ -500,7 +540,6 @@ function InvoiceDetail({ invoice }: { invoice: Invoice }) {
         </div>
       )}
 
-      {/* Line items */}
       <div>
         <p className="text-xs font-bold uppercase tracking-wider text-brand-choco-soft mb-2">
           Line Items ({invoice.lineItems?.length ?? 0})
@@ -543,7 +582,6 @@ function InvoiceDetail({ invoice }: { invoice: Invoice }) {
         </div>
       </div>
 
-      {/* Meta */}
       <div className="grid grid-cols-2 gap-3 text-sm">
         <div className="p-3 rounded-2xl bg-brand-cream-dark/50">
           <p className="text-xs font-bold uppercase text-brand-choco-soft">

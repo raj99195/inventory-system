@@ -46,7 +46,7 @@ const TX_TYPES: {
     label: 'Stock Out',
     icon: ArrowUpFromLine,
     color: 'blue',
-    description: 'Dispatched / sold',
+    description: 'Sold via marketplace',
   },
   {
     value: 'return',
@@ -80,7 +80,7 @@ const TX_TYPES: {
 
 const REASONS_BY_TYPE: Record<StockTxType, string[]> = {
   'stock-in': ['New Purchase', 'Zoho Invoice', 'Supplier Delivery', 'Transfer In'],
-  'stock-out': ['Sale', 'Dispatch', 'Sample', 'Internal Use', 'Transfer Out'],
+  'stock-out': ['Flipkart', 'Amazon', 'Sample', 'Internal Use'],
   return: ['Customer Return', 'Wrong Item', 'Quality Issue'],
   damage: ['Storage Damage', 'Transit Damage', 'Manufacturing Defect'],
   lost: ['Theft', 'Misplaced', 'Unknown'],
@@ -216,44 +216,44 @@ export default function StockTransactionForm({ onClose, presetProduct }: Props) 
               <currentType.icon className="w-5 h-5 text-brand-choco" />
             </div>
             <div className="flex-1">
-              <p className="font-bold text-sm">{currentType.label}</p>
-              <p className="text-xs text-brand-choco-soft">
-                {currentType.description}
+              <p className="text-xs font-bold uppercase tracking-wider text-brand-choco-soft">
+                Transaction Type
               </p>
+              <p className="font-bold">{currentType.label}</p>
             </div>
-            {!presetProduct && (
-              <button
-                type="button"
-                onClick={() => setStep('type')}
-                className="text-xs font-semibold text-brand-choco-soft hover:text-brand-orange"
-              >
-                Change
-              </button>
-            )}
+            <button
+              type="button"
+              onClick={() => {
+                setStep('type');
+                setSelected(presetProduct ?? null);
+              }}
+              className="text-xs font-semibold text-brand-choco-soft hover:text-brand-orange"
+            >
+              Change
+            </button>
           </div>
 
-          {/* Product picker */}
+          {/* Product picker or selected */}
           {!selected ? (
             <div>
               <label className="block text-sm font-semibold mb-2">
-                <Package className="inline w-3.5 h-3.5 mr-1" />
-                Select Product
+                Select Product <span className="text-red-500">*</span>
               </label>
               <div className="relative mb-3">
                 <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-brand-choco-soft" />
                 <input
-                  autoFocus
                   type="text"
+                  autoFocus
                   value={productSearch}
                   onChange={(e) => setProductSearch(e.target.value)}
+                  placeholder="Search products by name or SKU..."
                   className="input-field pl-11"
-                  placeholder="Search by name or SKU..."
                 />
               </div>
-              <div className="max-h-72 overflow-y-auto space-y-1 border border-brand-choco/8 rounded-2xl p-2">
+              <div className="max-h-64 overflow-y-auto space-y-1.5">
                 {filteredProducts.length === 0 ? (
-                  <p className="text-sm text-brand-choco-soft text-center py-4">
-                    No active products found
+                  <p className="text-sm text-brand-choco-soft text-center py-6">
+                    No products found
                   </p>
                 ) : (
                   filteredProducts.map((p) => (
@@ -261,18 +261,18 @@ export default function StockTransactionForm({ onClose, presetProduct }: Props) 
                       key={p.id}
                       type="button"
                       onClick={() => setSelected(p)}
-                      className="w-full flex items-center gap-3 p-3 rounded-xl hover:bg-brand-cream-dark text-left transition"
+                      className="w-full flex items-center gap-3 p-3 rounded-2xl hover:bg-brand-cream-dark transition text-left"
                     >
-                      <div className="w-10 h-10 rounded-lg bg-brand-cream-dark flex items-center justify-center shrink-0">
+                      <div className="w-10 h-10 rounded-xl bg-brand-cream-dark flex items-center justify-center shrink-0">
                         <Package className="w-4 h-4 text-brand-orange" />
                       </div>
                       <div className="flex-1 min-w-0">
-                        <p className="font-semibold text-sm truncate">
-                          {p.name}
+                        <p className="text-xs font-bold text-brand-orange">
+                          {p.sku}
                         </p>
-                        <p className="text-xs text-brand-orange">{p.sku}</p>
+                        <p className="font-semibold truncate">{p.name}</p>
                       </div>
-                      <div className="text-right">
+                      <div className="text-right shrink-0">
                         <p className="text-xs text-brand-choco-soft">Stock</p>
                         <p className="font-bold">{p.currentStock} {p.unit}</p>
                       </div>

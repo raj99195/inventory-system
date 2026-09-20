@@ -1,4 +1,5 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { useLocation, useNavigate, Navigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Users,
@@ -27,6 +28,7 @@ import { ProductRowSkeleton } from '@/components/ui/Skeleton';
 import EmployeeForm from '@/components/employees/EmployeeForm';
 import { useEmployees, deleteEmployee } from '@/hooks/useEmployees';
 import { useAssets } from '@/hooks/useAssets';
+import { usePermission } from '@/hooks/usePermission';
 import type { Employee, Asset } from '@/types';
 import { cn, formatDate, formatINR } from '@/lib/utils';
 
@@ -35,6 +37,10 @@ type FilterStatus = 'all' | 'active' | 'inactive' | 'resigned' | 'terminated';
 export default function EmployeesPage() {
   const { employees, loading } = useEmployees();
   const { assets } = useAssets();
+  const { can } = usePermission();
+  const location = useLocation();
+  const navigate = useNavigate();
+
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<FilterStatus>('all');
   const [deptFilter, setDeptFilter] = useState<string>('all');
@@ -45,11 +51,31 @@ export default function EmployeesPage() {
   const [deleteLoading, setDeleteLoading] = useState(false);
   const [menuOpen, setMenuOpen] = useState<string | null>(null);
 
+  const canCreate = can('employees.create');
+  const canEdit = can('employees.edit');
+  const canDeletePerm = can('employees.delete');
+
+  useEffect(() => {
+    const state = location.state as { openCreate?: boolean } | null;
+    if (state?.openCreate) {
+      if (canCreate) {
+        setSelected(null);
+        setFormOpen(true);
+      } else {
+        toast.error("You don't have permission to add employees");
+      }
+      navigate(location.pathname, { replace: true, state: {} });
+    }
+  }, [location.state, location.pathname, navigate, canCreate]);
+
+  if (!can('employees.view')) {
+    return <Navigate to="/" replace />;
+  }
+
   const departments = useMemo(() => {
     return Array.from(new Set(employees.map((e) => e.department))).sort();
   }, [employees]);
 
-  // Map of employeeId → assigned assets
   const assetsByEmployee = useMemo(() => {
     const map = new Map<string, Asset[]>();
     assets
@@ -87,6 +113,10 @@ export default function EmployeesPage() {
   }, [employees, departments]);
 
   const handleEdit = (e: Employee) => {
+    if (!canEdit) {
+      toast.error("You don't have permission to edit employees");
+      return;
+    }
     setSelected(e);
     setFormOpen(true);
     setMenuOpen(null);
@@ -94,7 +124,11 @@ export default function EmployeesPage() {
 
   const handleDelete = async () => {
     if (!deleting) return;
-    // Block delete if employee has assets
+    if (!canDeletePerm) {
+      toast.error("You don't have permission to remove employees");
+      setDeleting(null);
+      return;
+    }
     const assigned = assetsByEmployee.get(deleting.id) ?? [];
     if (assigned.length > 0) {
       toast.error(`Cannot remove — ${assigned.length} asset(s) still assigned. Return them first.`);
@@ -157,16 +191,18 @@ export default function EmployeesPage() {
             <Download className="w-4 h-4" />
             Export
           </button>
-          <button
-            onClick={() => {
-              setSelected(null);
-              setFormOpen(true);
-            }}
-            className="btn-primary"
-          >
-            <Plus className="w-4 h-4" />
-            Add Employee
-          </button>
+          {canCreate && (
+            <button
+              onClick={() => {
+                setSelected(null);
+                setFormOpen(true);
+              }}
+              className="btn-primary"
+            >
+              <Plus className="w-4 h-4" />
+              Add Employee
+            </button>
+          )}
         </div>
       </div>
 
@@ -257,11 +293,13 @@ export default function EmployeesPage() {
           title={employees.length === 0 ? 'No employees yet' : 'No matches'}
           description={
             employees.length === 0
-              ? 'Add your first team member to start managing assignments.'
+              ? canCreate
+                ? 'Add your first team member to start managing assignments.'
+                : 'No employees added. Contact an admin.'
               : 'Try different search or filter.'
           }
           action={
-            employees.length === 0
+            employees.length === 0 && canCreate
               ? {
                   label: 'Add First Employee',
                   icon: Plus,
@@ -281,6 +319,8 @@ export default function EmployeesPage() {
                 key={emp.id}
                 employee={emp}
                 assetCount={assetsByEmployee.get(emp.id)?.length ?? 0}
+                canEdit={canEdit}
+                canDelete={canDeletePerm}
                 onEdit={handleEdit}
                 onDelete={setDeleting}
                 onView={(e) => {
@@ -413,6 +453,8 @@ function StatusBadge({ status }: { status: Employee['status'] }) {
 function EmployeeCard({
   employee,
   assetCount,
+  canEdit,
+  canDelete,
   onEdit,
   onDelete,
   onView,
@@ -421,12 +463,16 @@ function EmployeeCard({
 }: {
   employee: Employee;
   assetCount: number;
+  canEdit: boolean;
+  canDelete: boolean;
   onEdit: (e: Employee) => void;
   onDelete: (e: Employee) => void;
   onView: (e: Employee) => void;
   menuOpen: boolean;
   setMenuOpen: (o: boolean) => void;
 }) {
+  const hasAnyAction = canEdit || canDelete;
+
   return (
     <motion.div
       layout
@@ -447,7 +493,6 @@ function EmployeeCard({
           >
             {getInitials(employee.name)}
           </div>
-          {/* Asset count badge on avatar */}
           {assetCount > 0 && (
             <div className="absolute -top-1 -right-1 w-6 h-6 rounded-full bg-brand-orange text-white text-[10px] font-bold flex items-center justify-center border-2 border-white shadow-md">
               {assetCount}
@@ -456,54 +501,62 @@ function EmployeeCard({
         </div>
         <div className="flex flex-col items-end gap-2">
           <StatusBadge status={employee.status} />
-          <div className="relative">
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                setMenuOpen(!menuOpen);
-              }}
-              className="w-8 h-8 rounded-xl bg-brand-cream-dark hover:bg-brand-cream-deep flex items-center justify-center"
-            >
-              <MoreVertical className="w-4 h-4" />
-            </button>
-            <AnimatePresence>
-              {menuOpen && (
-                <>
-                  <div
-                    className="fixed inset-0 z-40"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setMenuOpen(false);
-                    }}
-                  />
-                  <motion.div
-                    initial={{ opacity: 0, scale: 0.95 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    exit={{ opacity: 0, scale: 0.95 }}
-                    className="absolute right-0 mt-1 w-40 bg-white rounded-2xl shadow-2xl border border-brand-choco/8 py-1 z-50"
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    <button
-                      onClick={() => onEdit(employee)}
-                      className="w-full flex items-center gap-2 px-3 py-2 text-sm font-semibold text-brand-choco hover:bg-brand-cream-dark"
-                    >
-                      <Edit className="w-4 h-4" /> Edit
-                    </button>
-                    <div className="h-px bg-brand-choco/8 my-1" />
-                    <button
-                      onClick={() => {
-                        onDelete(employee);
+          {hasAnyAction && (
+            <div className="relative">
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setMenuOpen(!menuOpen);
+                }}
+                className="w-8 h-8 rounded-xl bg-brand-cream-dark hover:bg-brand-cream-deep flex items-center justify-center"
+              >
+                <MoreVertical className="w-4 h-4" />
+              </button>
+              <AnimatePresence>
+                {menuOpen && (
+                  <>
+                    <div
+                      className="fixed inset-0 z-40"
+                      onClick={(e) => {
+                        e.stopPropagation();
                         setMenuOpen(false);
                       }}
-                      className="w-full flex items-center gap-2 px-3 py-2 text-sm font-semibold text-red-600 hover:bg-red-50"
+                    />
+                    <motion.div
+                      initial={{ opacity: 0, scale: 0.95 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      exit={{ opacity: 0, scale: 0.95 }}
+                      className="absolute right-0 mt-1 w-40 bg-white rounded-2xl shadow-2xl border border-brand-choco/8 py-1 z-50"
+                      onClick={(e) => e.stopPropagation()}
                     >
-                      <Trash2 className="w-4 h-4" /> Remove
-                    </button>
-                  </motion.div>
-                </>
-              )}
-            </AnimatePresence>
-          </div>
+                      {canEdit && (
+                        <button
+                          onClick={() => onEdit(employee)}
+                          className="w-full flex items-center gap-2 px-3 py-2 text-sm font-semibold text-brand-choco hover:bg-brand-cream-dark"
+                        >
+                          <Edit className="w-4 h-4" /> Edit
+                        </button>
+                      )}
+                      {canEdit && canDelete && (
+                        <div className="h-px bg-brand-choco/8 my-1" />
+                      )}
+                      {canDelete && (
+                        <button
+                          onClick={() => {
+                            onDelete(employee);
+                            setMenuOpen(false);
+                          }}
+                          className="w-full flex items-center gap-2 px-3 py-2 text-sm font-semibold text-red-600 hover:bg-red-50"
+                        >
+                          <Trash2 className="w-4 h-4" /> Remove
+                        </button>
+                      )}
+                    </motion.div>
+                  </>
+                )}
+              </AnimatePresence>
+            </div>
+          )}
         </div>
       </div>
 
@@ -603,7 +656,6 @@ function EmployeeDetail({
         />
       </div>
 
-      {/* ASSIGNED ASSETS SECTION - live from Firestore */}
       <div>
         <div className="flex items-center justify-between mb-3">
           <p className="text-xs font-bold uppercase tracking-wider text-brand-choco-soft flex items-center gap-1.5">

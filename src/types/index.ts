@@ -1,5 +1,55 @@
 import type { Timestamp } from 'firebase/firestore';
 
+// ==================== ROLES & PERMISSIONS ====================
+export type AppRole = 'super_admin' | 'admin' | 'accountant' | 'custom';
+
+export interface Permissions {
+  dashboard: { view: boolean };
+  products: { view: boolean; create: boolean; edit: boolean; delete: boolean };
+  kits: { view: boolean; create: boolean; edit: boolean; delete: boolean };
+  stock: {
+    view: boolean;
+    stockIn: boolean;
+    stockOut: boolean;
+    adjustment: boolean;
+  };
+  invoices: {
+    view: boolean;
+    upload: boolean;
+    verify: boolean;
+    delete: boolean;
+  };
+  employees: {
+    view: boolean;
+    create: boolean;
+    edit: boolean;
+    delete: boolean;
+  };
+  assets: { view: boolean; create: boolean; edit: boolean; delete: boolean };
+  assignments: {
+    view: boolean;
+    assign: boolean;
+    return: boolean;
+    transfer: boolean;
+  };
+  categories: { view: boolean; create: boolean; delete: boolean };
+  audit: { view: boolean };
+  users: { view: boolean; create: boolean; edit: boolean; delete: boolean };
+}
+
+// ==================== APP USER ====================
+export interface AppUser {
+  uid: string; // Firebase Auth UID
+  email: string;
+  name: string;
+  role: AppRole;
+  permissions: Permissions;
+  active: boolean;
+  createdAt: Timestamp;
+  createdBy: string; // uid of creator
+  updatedAt: Timestamp;
+}
+
 // ==================== PRODUCTS ====================
 export type ProductStatus = 'active' | 'inactive' | 'discontinued';
 
@@ -22,6 +72,38 @@ export interface Product {
   updatedAt: Timestamp;
 }
 
+// ==================== KITS ====================
+export type KitStatus = 'active' | 'inactive' | 'discontinued';
+
+export interface KitComponent {
+  name: string;
+  quantity: number;
+  unit: string;
+  price: number;
+  productId?: string;
+  productSku?: string;
+  remarks?: string;
+}
+
+export interface Kit {
+  id: string;
+  name: string;
+  sku: string;
+  category: string;
+  description?: string;
+  components: KitComponent[];
+  componentCount: number;
+  totalPieces: number;
+  componentCost: number;
+  sellingPrice: number;
+  gstPercent: number;
+  currentStock: number; // 🚀 pre-assembled kits available for sale
+  imageUrl?: string;
+  status: KitStatus;
+  createdAt: Timestamp;
+  updatedAt: Timestamp;
+}
+
 // ==================== STOCK TRANSACTIONS ====================
 export type StockTxType =
   | 'stock-in'
@@ -32,7 +114,12 @@ export type StockTxType =
   | 'adjustment'
   | 'correction';
 
-export type StockSource = 'manual' | 'zoho-invoice' | 'return' | 'adjustment';
+export type StockSource =
+  | 'manual'
+  | 'zoho-invoice'
+  | 'return'
+  | 'adjustment'
+  | 'kit-assembly'; // 🚀 stock deducted because a kit was assembled
 
 export interface StockTransaction {
   id: string;
@@ -40,18 +127,20 @@ export interface StockTransaction {
   productName: string;
   productSku: string;
   type: StockTxType;
-  quantity: number; // signed: +ve for in, -ve for out
+  quantity: number;
   balanceAfter: number;
   source: StockSource;
   reason?: string;
   remarks?: string;
   invoiceId?: string;
+  kitId?: string; // 🚀 populated when source = 'kit-assembly'
+  kitSku?: string;
   attachmentUrl?: string;
   performedBy: string;
   createdAt: Timestamp;
 }
 
-// ==================== INVOICES (ZOHO) ====================
+// ==================== INVOICES ====================
 export type InvoiceStatus =
   | 'uploaded'
   | 'extracted'
@@ -122,7 +211,7 @@ export type AssetCondition = 'new' | 'good' | 'fair' | 'poor';
 
 export interface Asset {
   id: string;
-  assetId: string; // AST-XXXXX
+  assetId: string;
   name: string;
   category: string;
   brand?: string;
@@ -134,7 +223,7 @@ export interface Asset {
   warrantyEnd?: string;
   condition: AssetCondition;
   status: AssetStatus;
-  assignedTo?: string; // employee id
+  assignedTo?: string;
   remarks?: string;
   documentUrl?: string;
   createdAt: Timestamp;

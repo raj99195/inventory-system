@@ -1,4 +1,5 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { useLocation, useNavigate, Navigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   ArrowLeftRight,
@@ -24,6 +25,7 @@ import EmptyState from '@/components/ui/EmptyState';
 import { ProductRowSkeleton } from '@/components/ui/Skeleton';
 import StockTransactionForm from '@/components/stock/StockTransactionForm';
 import { useStockTransactions } from '@/hooks/useStockTransactions';
+import { usePermission } from '@/hooks/usePermission';
 import type { StockTransaction, StockTxType } from '@/types';
 import { cn, formatDateTime } from '@/lib/utils';
 
@@ -48,11 +50,40 @@ const TYPE_META: Record<
 
 export default function StockPage() {
   const { transactions, loading } = useStockTransactions(500);
+  const { can, canAny } = usePermission();
+  const location = useLocation();
+  const navigate = useNavigate();
+
   const [search, setSearch] = useState('');
   const [typeFilter, setTypeFilter] = useState<FilterType>('all');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
   const [formOpen, setFormOpen] = useState(false);
+
+  // ANY stock action permission allows creating a transaction
+  const canCreate = canAny([
+    'stock.stockIn',
+    'stock.stockOut',
+    'stock.adjustment',
+  ]);
+
+  // Auto-open create modal via location.state (only if allowed)
+  useEffect(() => {
+    const state = location.state as { openCreate?: boolean } | null;
+    if (state?.openCreate) {
+      if (canCreate) {
+        setFormOpen(true);
+      } else {
+        toast.error("You don't have permission to create stock transactions");
+      }
+      navigate(location.pathname, { replace: true, state: {} });
+    }
+  }, [location.state, location.pathname, navigate, canCreate]);
+
+  // Route guard
+  if (!can('stock.view')) {
+    return <Navigate to="/" replace />;
+  }
 
   const filtered = useMemo(() => {
     return transactions.filter((t) => {
@@ -138,10 +169,12 @@ export default function StockPage() {
             <Download className="w-4 h-4" />
             Export
           </button>
-          <button onClick={() => setFormOpen(true)} className="btn-primary">
-            <Plus className="w-4 h-4" />
-            New Transaction
-          </button>
+          {canCreate && (
+            <button onClick={() => setFormOpen(true)} className="btn-primary">
+              <Plus className="w-4 h-4" />
+              New Transaction
+            </button>
+          )}
         </div>
       </div>
 
@@ -245,11 +278,13 @@ export default function StockPage() {
           title={transactions.length === 0 ? 'No transactions yet' : 'No matches'}
           description={
             transactions.length === 0
-              ? 'Record your first stock movement to start the ledger.'
+              ? canCreate
+                ? 'Record your first stock movement to start the ledger.'
+                : 'No transactions recorded. Contact an admin.'
               : 'Try changing filters or dates.'
           }
           action={
-            transactions.length === 0
+            transactions.length === 0 && canCreate
               ? {
                   label: 'First Transaction',
                   icon: Plus,

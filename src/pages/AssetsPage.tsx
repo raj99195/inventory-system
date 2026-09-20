@@ -1,4 +1,5 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { useLocation, useNavigate, Navigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Laptop,
@@ -28,6 +29,7 @@ import EmptyState from '@/components/ui/EmptyState';
 import { ProductRowSkeleton } from '@/components/ui/Skeleton';
 import AssetForm from '@/components/assets/AssetForm';
 import { useAssets, deleteAsset } from '@/hooks/useAssets';
+import { usePermission } from '@/hooks/usePermission';
 import type { Asset, AssetStatus } from '@/types';
 import { cn, formatDate, formatINR } from '@/lib/utils';
 
@@ -36,6 +38,10 @@ type FilterStatus = 'all' | AssetStatus;
 
 export default function AssetsPage() {
   const { assets, loading } = useAssets();
+  const { can } = usePermission();
+  const location = useLocation();
+  const navigate = useNavigate();
+
   const [viewMode, setViewMode] = useState<ViewMode>('grid');
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<FilterStatus>('all');
@@ -46,6 +52,27 @@ export default function AssetsPage() {
   const [deleting, setDeleting] = useState<Asset | null>(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
   const [menuOpen, setMenuOpen] = useState<string | null>(null);
+
+  const canCreate = can('assets.create');
+  const canEdit = can('assets.edit');
+  const canDeletePerm = can('assets.delete');
+
+  useEffect(() => {
+    const state = location.state as { openCreate?: boolean } | null;
+    if (state?.openCreate) {
+      if (canCreate) {
+        setSelected(null);
+        setFormOpen(true);
+      } else {
+        toast.error("You don't have permission to register assets");
+      }
+      navigate(location.pathname, { replace: true, state: {} });
+    }
+  }, [location.state, location.pathname, navigate, canCreate]);
+
+  if (!can('assets.view')) {
+    return <Navigate to="/" replace />;
+  }
 
   const categories = useMemo(() => {
     return Array.from(new Set(assets.map((a) => a.category))).sort();
@@ -80,6 +107,10 @@ export default function AssetsPage() {
   }, [assets]);
 
   const handleEdit = (a: Asset) => {
+    if (!canEdit) {
+      toast.error("You don't have permission to edit assets");
+      return;
+    }
     setSelected(a);
     setFormOpen(true);
     setMenuOpen(null);
@@ -87,6 +118,11 @@ export default function AssetsPage() {
 
   const handleDelete = async () => {
     if (!deleting) return;
+    if (!canDeletePerm) {
+      toast.error("You don't have permission to delete assets");
+      setDeleting(null);
+      return;
+    }
     setDeleteLoading(true);
     try {
       await deleteAsset(deleting);
@@ -145,16 +181,18 @@ export default function AssetsPage() {
             <Download className="w-4 h-4" />
             Export
           </button>
-          <button
-            onClick={() => {
-              setSelected(null);
-              setFormOpen(true);
-            }}
-            className="btn-primary"
-          >
-            <Plus className="w-4 h-4" />
-            Register Asset
-          </button>
+          {canCreate && (
+            <button
+              onClick={() => {
+                setSelected(null);
+                setFormOpen(true);
+              }}
+              className="btn-primary"
+            >
+              <Plus className="w-4 h-4" />
+              Register Asset
+            </button>
+          )}
         </div>
       </div>
 
@@ -292,11 +330,13 @@ export default function AssetsPage() {
           title={assets.length === 0 ? 'No assets registered' : 'No matches'}
           description={
             assets.length === 0
-              ? 'Register your first asset to start tracking equipment.'
+              ? canCreate
+                ? 'Register your first asset to start tracking equipment.'
+                : 'No assets registered. Contact an admin.'
               : 'Try different search or filter.'
           }
           action={
-            assets.length === 0
+            assets.length === 0 && canCreate
               ? {
                   label: 'Register First Asset',
                   icon: Plus,
@@ -315,6 +355,8 @@ export default function AssetsPage() {
               <AssetGridCard
                 key={a.id}
                 asset={a}
+                canEdit={canEdit}
+                canDelete={canDeletePerm}
                 onEdit={handleEdit}
                 onDelete={setDeleting}
                 onView={(a) => {
@@ -347,6 +389,8 @@ export default function AssetsPage() {
                   <AssetListRow
                     key={a.id}
                     asset={a}
+                    canEdit={canEdit}
+                    canDelete={canDeletePerm}
                     onEdit={handleEdit}
                     onDelete={setDeleting}
                     onView={(a) => {
@@ -491,6 +535,8 @@ function WarrantyStatus({ end }: { end?: string }) {
 
 interface RowProps {
   asset: Asset;
+  canEdit: boolean;
+  canDelete: boolean;
   onEdit: (a: Asset) => void;
   onDelete: (a: Asset) => void;
   onView: (a: Asset) => void;
@@ -498,14 +544,93 @@ interface RowProps {
   setMenuOpen: (o: boolean) => void;
 }
 
+function AssetActionsMenu({
+  asset,
+  canEdit,
+  canDelete,
+  onEdit,
+  onDelete,
+  menuOpen,
+  setMenuOpen,
+}: {
+  asset: Asset;
+  canEdit: boolean;
+  canDelete: boolean;
+  onEdit: (a: Asset) => void;
+  onDelete: (a: Asset) => void;
+  menuOpen: boolean;
+  setMenuOpen: (o: boolean) => void;
+}) {
+  return (
+    <div className="relative">
+      <button
+        onClick={(e) => {
+          e.stopPropagation();
+          setMenuOpen(!menuOpen);
+        }}
+        className="w-8 h-8 rounded-xl bg-brand-cream-dark hover:bg-brand-cream-deep flex items-center justify-center"
+      >
+        <MoreVertical className="w-4 h-4" />
+      </button>
+      <AnimatePresence>
+        {menuOpen && (
+          <>
+            <div
+              className="fixed inset-0 z-40"
+              onClick={(e) => {
+                e.stopPropagation();
+                setMenuOpen(false);
+              }}
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="absolute right-0 mt-1 w-40 bg-white rounded-2xl shadow-2xl border border-brand-choco/8 py-1 z-50"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {canEdit && (
+                <button
+                  onClick={() => onEdit(asset)}
+                  className="w-full flex items-center gap-2 px-3 py-2 text-sm font-semibold text-brand-choco hover:bg-brand-cream-dark"
+                >
+                  <Edit className="w-4 h-4" /> Edit
+                </button>
+              )}
+              {canEdit && canDelete && (
+                <div className="h-px bg-brand-choco/8 my-1" />
+              )}
+              {canDelete && (
+                <button
+                  onClick={() => {
+                    onDelete(asset);
+                    setMenuOpen(false);
+                  }}
+                  className="w-full flex items-center gap-2 px-3 py-2 text-sm font-semibold text-red-600 hover:bg-red-50"
+                >
+                  <Trash2 className="w-4 h-4" /> Delete
+                </button>
+              )}
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+
 function AssetGridCard({
   asset,
+  canEdit,
+  canDelete,
   onEdit,
   onDelete,
   onView,
   menuOpen,
   setMenuOpen,
 }: RowProps) {
+  const hasAnyAction = canEdit || canDelete;
+
   return (
     <motion.div
       layout
@@ -520,54 +645,17 @@ function AssetGridCard({
         <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-brand-orange-100 to-brand-cream-deep flex items-center justify-center">
           <Laptop className="w-7 h-7 text-brand-orange" />
         </div>
-        <div className="relative">
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              setMenuOpen(!menuOpen);
-            }}
-            className="w-8 h-8 rounded-xl bg-brand-cream-dark hover:bg-brand-cream-deep flex items-center justify-center"
-          >
-            <MoreVertical className="w-4 h-4" />
-          </button>
-          <AnimatePresence>
-            {menuOpen && (
-              <>
-                <div
-                  className="fixed inset-0 z-40"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setMenuOpen(false);
-                  }}
-                />
-                <motion.div
-                  initial={{ opacity: 0, scale: 0.95 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  exit={{ opacity: 0, scale: 0.95 }}
-                  className="absolute right-0 mt-1 w-40 bg-white rounded-2xl shadow-2xl border border-brand-choco/8 py-1 z-50"
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  <button
-                    onClick={() => onEdit(asset)}
-                    className="w-full flex items-center gap-2 px-3 py-2 text-sm font-semibold text-brand-choco hover:bg-brand-cream-dark"
-                  >
-                    <Edit className="w-4 h-4" /> Edit
-                  </button>
-                  <div className="h-px bg-brand-choco/8 my-1" />
-                  <button
-                    onClick={() => {
-                      onDelete(asset);
-                      setMenuOpen(false);
-                    }}
-                    className="w-full flex items-center gap-2 px-3 py-2 text-sm font-semibold text-red-600 hover:bg-red-50"
-                  >
-                    <Trash2 className="w-4 h-4" /> Delete
-                  </button>
-                </motion.div>
-              </>
-            )}
-          </AnimatePresence>
-        </div>
+        {hasAnyAction && (
+          <AssetActionsMenu
+            asset={asset}
+            canEdit={canEdit}
+            canDelete={canDelete}
+            onEdit={onEdit}
+            onDelete={onDelete}
+            menuOpen={menuOpen}
+            setMenuOpen={setMenuOpen}
+          />
+        )}
       </div>
 
       <p className="text-xs font-semibold text-brand-orange">{asset.assetId}</p>
@@ -605,12 +693,16 @@ function AssetGridCard({
 
 function AssetListRow({
   asset,
+  canEdit,
+  canDelete,
   onEdit,
   onDelete,
   onView,
   menuOpen,
   setMenuOpen,
 }: RowProps) {
+  const hasAnyAction = canEdit || canDelete;
+
   return (
     <tr
       className="border-b border-brand-choco/5 hover:bg-brand-cream-dark/50 transition cursor-pointer"
@@ -646,54 +738,17 @@ function AssetListRow({
         {formatINR(asset.purchaseCost)}
       </td>
       <td className="p-4 relative">
-        <div className="relative">
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              setMenuOpen(!menuOpen);
-            }}
-            className="w-8 h-8 rounded-xl bg-brand-cream-dark hover:bg-brand-cream-deep flex items-center justify-center"
-          >
-            <MoreVertical className="w-4 h-4" />
-          </button>
-          <AnimatePresence>
-            {menuOpen && (
-              <>
-                <div
-                  className="fixed inset-0 z-40"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setMenuOpen(false);
-                  }}
-                />
-                <motion.div
-                  initial={{ opacity: 0, scale: 0.95 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  exit={{ opacity: 0, scale: 0.95 }}
-                  className="absolute right-0 mt-1 w-40 bg-white rounded-2xl shadow-2xl border border-brand-choco/8 py-1 z-50"
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  <button
-                    onClick={() => onEdit(asset)}
-                    className="w-full flex items-center gap-2 px-3 py-2 text-sm font-semibold text-brand-choco hover:bg-brand-cream-dark"
-                  >
-                    <Edit className="w-4 h-4" /> Edit
-                  </button>
-                  <div className="h-px bg-brand-choco/8 my-1" />
-                  <button
-                    onClick={() => {
-                      onDelete(asset);
-                      setMenuOpen(false);
-                    }}
-                    className="w-full flex items-center gap-2 px-3 py-2 text-sm font-semibold text-red-600 hover:bg-red-50"
-                  >
-                    <Trash2 className="w-4 h-4" /> Delete
-                  </button>
-                </motion.div>
-              </>
-            )}
-          </AnimatePresence>
-        </div>
+        {hasAnyAction && (
+          <AssetActionsMenu
+            asset={asset}
+            canEdit={canEdit}
+            canDelete={canDelete}
+            onEdit={onEdit}
+            onDelete={onDelete}
+            menuOpen={menuOpen}
+            setMenuOpen={setMenuOpen}
+          />
+        )}
       </td>
     </tr>
   );

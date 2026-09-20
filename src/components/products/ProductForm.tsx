@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { motion } from 'framer-motion';
+import { useState } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import {
   Package,
   IndianRupee,
@@ -11,17 +11,19 @@ import {
   AlertCircle,
   Loader2,
   Sparkles,
+  History,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { z } from 'zod';
 import type { Product, ProductStatus } from '@/types';
-import { createProduct, updateProduct, generateSku } from '@/hooks/useProducts';
+import { createProduct, updateProduct } from '@/hooks/useProducts';
+import { createAdjustment } from '@/hooks/useStockTransactions';
 import { useCategories, createCategory } from '@/hooks/useCategories';
 import { cn } from '@/lib/utils';
 
 const productSchema = z.object({
   name: z.string().min(2, 'Name too short').max(100),
-  sku: z.string().min(2, 'SKU required'),
+  sku: z.string().min(2, 'HSN code required'),
   category: z.string().min(1, 'Category required'),
   brand: z.string().optional(),
   description: z.string().optional(),
@@ -53,6 +55,7 @@ export default function ProductForm({ product, onClose, onSaved }: Props) {
   const [errors, setErrors] = useState<Partial<Record<keyof FormData, string>>>(
     {}
   );
+  const [correctionReason, setCorrectionReason] = useState('Manual stock correction');
 
   const [form, setForm] = useState<FormData>({
     name: product?.name ?? '',
@@ -69,13 +72,10 @@ export default function ProductForm({ product, onClose, onSaved }: Props) {
     status: product?.status ?? 'active',
   });
 
-  // Auto-generate SKU when category changes for new product
-  useEffect(() => {
-    if (isEdit || !form.category || form.sku) return;
-    generateSku(form.category).then((sku) =>
-      setForm((f) => ({ ...f, sku }))
-    );
-  }, [form.category, isEdit, form.sku]);
+  // Stock delta detection for edit mode
+  const originalStock = product?.currentStock ?? 0;
+  const stockDelta = form.currentStock - originalStock;
+  const stockChanged = isEdit && stockDelta !== 0;
 
   const set = <K extends keyof FormData>(key: K, val: FormData[K]) => {
     setForm((f) => ({ ...f, [key]: val }));
@@ -109,19 +109,46 @@ export default function ProductForm({ product, onClose, onSaved }: Props) {
       return;
     }
 
+    // Require correction reason if stock is being changed on edit
+    if (stockChanged && !correctionReason.trim()) {
+      toast.error('Please provide a reason for the stock correction');
+      return;
+    }
+
     setSaving(true);
     try {
       if (isEdit && product) {
+        // Split out currentStock — handle via createAdjustment for audit trail
+        const { currentStock: _newStock, ...productDataWithoutStock } =
+          parsed.data;
+
+        // Update product doc (all fields except stock)
         await updateProduct(
           product.id,
-          parsed.data,
+          productDataWithoutStock,
           {
             name: product.name,
             sellingPrice: product.sellingPrice,
             currentStock: product.currentStock,
           }
         );
-        toast.success('Product updated');
+
+        // If stock changed, create an adjustment transaction
+        // This atomically updates product.currentStock AND creates the audit trail
+        if (stockDelta !== 0) {
+          await createAdjustment(
+            product,
+            stockDelta,
+            correctionReason.trim(),
+            `Corrected from ${originalStock} → ${form.currentStock} via product edit`
+          );
+        }
+
+        toast.success(
+          stockChanged
+            ? `Product updated · Stock corrected (${stockDelta > 0 ? '+' : ''}${stockDelta})`
+            : 'Product updated'
+        );
       } else {
         await createProduct(parsed.data);
         toast.success('Product created');
@@ -155,13 +182,13 @@ export default function ProductForm({ product, onClose, onSaved }: Props) {
           />
         </Field>
 
-        <Field label="SKU / Product Code" icon={Hash} error={errors.sku} required>
+        <Field label="HSN Code" icon={Hash} error={errors.sku} required>
           <input
             type="text"
             value={form.sku}
             onChange={(e) => set('sku', e.target.value)}
             className="input-field"
-            placeholder="Auto-generated"
+            placeholder="e.g. 8523"
           />
         </Field>
 
@@ -314,13 +341,15 @@ export default function ProductForm({ product, onClose, onSaved }: Props) {
               type="number"
               value={form.currentStock}
               onChange={(e) => set('currentStock', +e.target.value)}
-              className="input-field"
-              disabled={isEdit}
+              className={cn(
+                'input-field',
+                stockChanged && 'border-brand-orange bg-brand-orange-50/40'
+              )}
             />
-            {isEdit && (
+            {isEdit && !stockChanged && (
               <p className="text-xs text-brand-choco-soft mt-1 flex items-center gap-1">
                 <Sparkles className="w-3 h-3" />
-                Edit stock via Stock Movement to keep audit trail
+                Auto-creates audit trail on change
               </p>
             )}
           </Field>
@@ -333,6 +362,69 @@ export default function ProductForm({ product, onClose, onSaved }: Props) {
             />
           </Field>
         </div>
+
+        {/* Stock change warning + reason field */}
+        <AnimatePresence>
+          {stockChanged && (
+            <motion.div
+              initial={{ opacity: 0, height: 0, marginTop: 0 }}
+              animate={{ opacity: 1, height: 'auto', marginTop: 16 }}
+              exit={{ opacity: 0, height: 0, marginTop: 0 }}
+              className="overflow-hidden"
+            >
+              <div className="p-4 rounded-2xl bg-brand-orange-50 border-2 border-brand-orange/30">
+                <div className="flex items-start gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-white flex items-center justify-center shrink-0">
+                    <History className="w-5 h-5 text-brand-orange" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-bold text-brand-orange-dark">
+                      Stock Change Detected
+                    </p>
+                    <p className="text-xs text-brand-choco-soft mt-0.5">
+                      A correction transaction will be logged:{' '}
+                      <span className="font-bold">
+                        {originalStock} → {form.currentStock}
+                      </span>{' '}
+                      (
+                      <span
+                        className={cn(
+                          'font-bold',
+                          stockDelta > 0 ? 'text-green-700' : 'text-red-600'
+                        )}
+                      >
+                        {stockDelta > 0 ? '+' : ''}
+                        {stockDelta}
+                      </span>
+                      )
+                    </p>
+                    <div className="mt-3">
+                      <label className="block text-xs font-semibold mb-1.5">
+                        Correction Reason <span className="text-red-500">*</span>
+                      </label>
+                      <input
+                        list="correction-reasons"
+                        type="text"
+                        required
+                        value={correctionReason}
+                        onChange={(e) => setCorrectionReason(e.target.value)}
+                        className="input-field !py-2 text-sm"
+                        placeholder="Why is stock being changed?"
+                      />
+                      <datalist id="correction-reasons">
+                        <option value="Physical Count Mismatch" />
+                        <option value="Data Correction" />
+                        <option value="Opening Balance" />
+                        <option value="Initial Setup" />
+                        <option value="System Error" />
+                      </datalist>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
 
       {/* Description */}

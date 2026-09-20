@@ -31,7 +31,7 @@ import { useQuotations, deleteQuotation } from '@/hooks/useQuotations';
 import { usePermission } from '@/hooks/usePermission';
 import { downloadQuotationPdf, previewQuotationPdf } from '@/lib/quotationPdf';
 import type { Quotation, QuotationStatus } from '@/types';
-import { cn, formatINR, formatDateTime } from '@/lib/utils';
+import { cn, formatINR } from '@/lib/utils';
 
 type StatusFilter = 'all' | QuotationStatus;
 
@@ -337,11 +337,10 @@ export default function QuotationsPage() {
         open={!!confirmDelete}
         onClose={() => setConfirmDelete(null)}
         onConfirm={handleDelete}
-        title="Delete Quotation?"
-        description={
+        title={
           confirmDelete
-            ? `This will permanently delete quotation ${confirmDelete.quotationNumber} for ${confirmDelete.customerName}. This action cannot be undone.`
-            : ''
+            ? `Delete quotation ${confirmDelete.quotationNumber}? This action cannot be undone.`
+            : 'Delete Quotation?'
         }
         confirmLabel="Delete"
         variant="danger"

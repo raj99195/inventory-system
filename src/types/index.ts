@@ -24,7 +24,7 @@ export interface Permissions {
     create: boolean;
     edit: boolean;
     delete: boolean;
-  }; // 🚀 NEW
+  };
   employees: {
     view: boolean;
     create: boolean;
@@ -185,7 +185,7 @@ export interface Invoice {
   errorMessage?: string;
 }
 
-// ==================== 🚀 QUOTATIONS ====================
+// ==================== QUOTATIONS ====================
 export type QuotationStatus =
   | 'draft'
   | 'sent'
@@ -202,8 +202,8 @@ export interface QuotationLineItem {
   rate: number;
   discountPercent: number;
   gstPercent: number;
-  amount: number; // qty × rate × (1 - disc/100) × (1 + gst/100)
-  productId?: string; // linked product (optional)
+  amount: number;
+  productId?: string;
   productSku?: string;
   remarks?: string;
 }
@@ -211,28 +211,26 @@ export interface QuotationLineItem {
 export interface Quotation {
   id: string;
   quotationNumber: string;
-  quotationDate: string; // ISO date
+  quotationDate: string;
   validUntil: string;
-  // Customer
   customerName: string;
   customerCompany?: string;
   customerAddress?: string;
   customerGstin?: string;
   customerEmail?: string;
   customerPhone?: string;
-  // Items
   items: QuotationLineItem[];
   itemCount: number;
-  // Totals
-  subTotal: number; // sum of (qty × rate)
+  subTotal: number;
   totalDiscount: number;
-  totalTax: number; // GST sum
+  totalTax: number;
   grandTotal: number;
-  // Terms
+  // 🔒 INTERNAL FIELDS — never exported to customer PDF
+  marginPercent?: number; // % markup on cost (0-1000); used for internal profitability tracking
+  internalNotes?: string; // internal-only reference notes
   terms?: string;
   notes?: string;
   status: QuotationStatus;
-  // Meta
   createdAt: Timestamp;
   createdBy: string;
   updatedAt: Timestamp;

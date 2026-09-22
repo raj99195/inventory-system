@@ -96,8 +96,6 @@ const navItems: NavItem[] = [
     icon: Receipt,
     viewPerm: 'quotations.view',
     createPerm: 'quotations.create',
-    // No quickAddType — QuickAddContext doesn't have quotations yet;
-    // sidebar hover "+" falls back to navigating with openCreate state
   },
   {
     to: '/employees',
@@ -117,7 +115,7 @@ const navItems: NavItem[] = [
   },
   {
     to: '/assignments',
-    label: 'Assignments',
+    label: 'Asset Assignments',
     icon: UserCheck,
     viewPerm: 'assignments.view',
     createPerm: 'assignments.assign',
@@ -250,7 +248,7 @@ function getPageTitle(path: string) {
     '/quotations': { category: 'Sales', title: 'Quotations' },
     '/employees': { category: 'Team', title: 'Employees' },
     '/assets': { category: 'Assets', title: 'Company Assets' },
-    '/assignments': { category: 'Assets', title: 'Assignments' },
+    '/assignments': { category: 'Assets', title: 'Asset Assignments' },
     '/audit': { category: 'Compliance', title: 'Audit Log' },
     '/users': { category: 'Access Control', title: 'Users & Roles' },
   };

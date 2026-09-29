@@ -27,7 +27,6 @@ import {
   ROLE_LABELS,
   ROLE_DESCRIPTIONS,
   getPresetForRole,
-  detectRole,
   clonePermissions,
   getAssignableRoles,
   myLevel,
@@ -118,7 +117,6 @@ export default function UserForm({ user, onClose }: Props) {
     if (!module) return;
     module[actionKey] = !module[actionKey];
     setPermissions(cloned);
-    setRole(detectRole(cloned));
   };
 
   const handleToggleAll = (moduleKey: string, value: boolean) => {
@@ -129,7 +127,6 @@ export default function UserForm({ user, onClose }: Props) {
     if (!module) return;
     Object.keys(module).forEach((k) => (module[k] = value));
     setPermissions(cloned);
-    setRole(detectRole(cloned));
   };
 
   const fetchCoords = async () => {
@@ -540,7 +537,7 @@ export default function UserForm({ user, onClose }: Props) {
           <SectionHeader
             icon={Sparkles}
             title="Permissions Matrix"
-            subtitle="Toggle individual permissions. Role auto-switches to Custom on any change."
+            subtitle="Toggle individual permissions. The selected role stays unchanged."
           />
           <div className="rounded-2xl border border-brand-choco/8 overflow-hidden bg-white">
             <div className="overflow-x-auto">

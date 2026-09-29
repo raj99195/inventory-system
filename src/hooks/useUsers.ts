@@ -14,7 +14,7 @@ import { db } from '@/lib/firebase';
 import { createAuthUser } from '@/lib/secondaryAuth';
 import { logAudit } from '@/lib/audit';
 import type { AppUser, AppRole, Permissions } from '@/types';
-import { getPresetForRole, detectRole } from '@/lib/permissions';
+import { getPresetForRole } from '@/lib/permissions';
 
 const COL = 'users';
 
@@ -97,11 +97,8 @@ export async function updateUser(
   },
   previousValue?: Partial<AppUser>
 ): Promise<void> {
-  // If permissions are being updated, auto-detect the closest role
+  // Preserve the existing role unless a new role is explicitly provided.
   const patch: Record<string, unknown> = { ...data, updatedAt: serverTimestamp() };
-  if (data.permissions && !data.role) {
-    patch.role = detectRole(data.permissions);
-  }
 
   await updateDoc(doc(db, COL, uid), patch);
 

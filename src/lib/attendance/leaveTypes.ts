@@ -50,3 +50,18 @@ export function defaultBalances(
   });
   return out;
 }
+
+/** Validate settings before publishing a leave policy. */
+export function validateLeaveTypes(types: LeaveTypeConfig[]): string | null {
+  const codes = new Set<string>();
+  for (const type of types) {
+    if (!/^[A-Z][A-Z0-9_]{0,15}$/.test(type.code)) return 'Use a short uppercase leave code (letters, digits or underscore).';
+    if (codes.has(type.code)) return `Duplicate leave code: ${type.code}`;
+    codes.add(type.code);
+    if (!type.name.trim()) return 'Every leave type needs a name.';
+    if (!Number.isFinite(type.default) || type.default < 0) return 'Yearly allowance must be zero or more.';
+    const maximum = type.maxDaysPerApplication ?? 3;
+    if (!Number.isInteger(maximum) || maximum < 1 || maximum > 366) return 'Per-application limit must be a whole number from 1 to 366.';
+  }
+  return null;
+}

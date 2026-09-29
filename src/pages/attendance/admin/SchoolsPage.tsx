@@ -1,489 +1,263 @@
-import { useMemo, useState } from 'react';
-import { Navigate } from 'react-router-dom';
-import {
-  Plus,
-  Search,
-  School as SchoolIcon,
-  MapPin,
-  Edit,
-  Trash2,
-  Loader2,
-  RefreshCw,
-  ExternalLink,
-} from 'lucide-react';
-import toast from 'react-hot-toast';
-import Modal from '@/components/ui/Modal';
-import ConfirmDialog from '@/components/ui/ConfirmDialog';
-import EmptyState from '@/components/ui/EmptyState';
+import { useState, useMemo } from 'react';
+import { Link } from 'react-router-dom';
+import { useSchools } from '@/hooks/useSchools';
+import { useAuth } from '@/contexts/AuthContext';
 import { usePermission } from '@/hooks/usePermission';
+import NoAccessPage from '@/pages/NoAccessPage';
 import {
-  useSchools,
-  createSchool,
-  updateSchool,
-  deleteSchool,
-} from '@/hooks/useSchools';
-import { forwardGeocode, reverseGeocode } from '@/lib/attendance/geocode';
+  Search,
+  MapPin,
+  ExternalLink,
+  Plus,
+  Pencil,
+  Trash2,
+  School as SchoolIcon,
+} from 'lucide-react';
 import type { School, WorkingDay } from '@/types';
-import { cn } from '@/lib/utils';
 
-const DAYS: WorkingDay[] = ['MO', 'TU', 'WE', 'TH', 'FR', 'SA', 'SU'];
-const DAY_LABELS: Record<WorkingDay, string> = {
-  MO: 'Mon',
-  TU: 'Tue',
-  WE: 'Wed',
-  TH: 'Thu',
-  FR: 'Fri',
-  SA: 'Sat',
-  SU: 'Sun',
+const WEEKDAY_LETTERS: Record<WorkingDay, string> = {
+  MO: 'M', TU: 'T', WE: 'W', TH: 'T', FR: 'F', SA: 'S', SU: 'S',
 };
+const WEEKDAY_ORDER: WorkingDay[] = ['MO', 'TU', 'WE', 'TH', 'FR', 'SA', 'SU'];
 
 export default function SchoolsPage() {
+  const { userDoc: user } = useAuth();
   const { can } = usePermission();
-  const { schools, loading } = useSchools();
-
-  const [q, setQ] = useState('');
-  const [formOpen, setFormOpen] = useState(false);
-  const [editing, setEditing] = useState<School | null>(null);
-  const [deleting, setDeleting] = useState<School | null>(null);
-  const [deleteBusy, setDeleteBusy] = useState(false);
-
-  if (!can('schools.view')) {
-    return <Navigate to="/" replace />;
-  }
-
-  const filtered = useMemo(
-    () => schools.filter((s) => !q || s.name.toLowerCase().includes(q.toLowerCase())),
-    [schools, q]
-  );
+  const { schools, loading, error } = useSchools();
+  const [query, setQuery] = useState('');
 
   const canCreate = can('schools.create');
   const canEdit = can('schools.edit');
   const canDelete = can('schools.delete');
+  const isAdminLevel = canCreate || canEdit || canDelete || (user?.active === true && ['super_admin', 'admin', 'hr'].includes(user.role));
 
-  const handleDelete = async () => {
-    if (!deleting) return;
-    setDeleteBusy(true);
-    try {
-      await deleteSchool(deleting);
-      toast.success('School deleted');
-      setDeleting(null);
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Delete failed');
-    } finally {
-      setDeleteBusy(false);
-    }
-  };
+  // Employees see only their assigned schools; admin+/HR see all
+  const visibleSchools = useMemo(() => {
+    if (!schools) return [];
+    if (isAdminLevel) return schools;
+    const assigned = new Set<string>(user?.assignedSchools || []);
+    return schools.filter((s) => assigned.has(s.id));
+  }, [schools, isAdminLevel, user?.assignedSchools]);
+
+  // Search filter
+  const filtered = useMemo(() => {
+    if (!query.trim()) return visibleSchools;
+    const q = query.toLowerCase();
+    return visibleSchools.filter(
+      (s) =>
+        (s.name || '').toLowerCase().includes(q)
+        || (s.address || '').toLowerCase().includes(q)
+    );
+  }, [visibleSchools, query]);
+
+  if (!can('schools.view')) return <NoAccessPage />;
+  if (error) return <p role="alert">Unable to load schools: {error.message}</p>;
+  if (loading) {
+    return (
+      <div className="p-6">
+        <div className="animate-pulse text-brand-choco/60">Loading schools…</div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
         <div>
-          <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-brand-orange-50 text-brand-orange-dark text-xs font-bold uppercase tracking-wider mb-3">
-            <span className="w-1.5 h-1.5 rounded-full bg-brand-orange" />
-            Locations
-          </div>
-          <h1 className="font-display text-4xl lg:text-5xl font-bold">Schools</h1>
-          <p className="text-brand-choco-soft mt-2">
-            School sites employees can check into. Each has its own hours + geofence.
+          <p className="inline-flex px-4 py-1.5 rounded-full bg-brand-orange-50 text-brand-orange-dark text-xs font-bold uppercase tracking-wider mb-3">
+            {isAdminLevel ? 'Locations' : 'My Schools'}
+          </p>
+          <h1 className="font-display text-4xl lg:text-5xl font-bold text-brand-choco mt-1">Schools</h1>
+          <p className="text-sm text-brand-choco/60 mt-1">
+            {isAdminLevel
+              ? 'School sites employees can check into. Each has its own hours + geofence.'
+              : 'View your assigned schools and attendance locations.'}
           </p>
         </div>
         {canCreate && (
-          <button
-            onClick={() => {
-              setEditing(null);
-              setFormOpen(true);
-            }}
-            className="btn-primary"
+          <Link
+            to="/attendance/admin/schools/new"
+            className="btn-primary shrink-0"
           >
-            <Plus className="w-4 h-4" />
-            Add School
-          </button>
+            <Plus size={18} />
+            New School
+          </Link>
         )}
       </div>
 
-      <div className="card !p-4">
-        <div className="relative">
-          <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-brand-choco-soft" />
+      {/* Search */}
+      <div className="card !p-3">
+        <div className="flex items-center gap-2 px-3">
+          <Search size={18} className="text-brand-choco/40" />
           <input
-            type="text"
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
             placeholder="Search schools…"
-            className="input-field pl-11 !py-2.5"
+            className="flex-1 py-2 outline-none bg-transparent text-brand-choco placeholder:text-brand-choco/40"
           />
         </div>
       </div>
 
-      {loading ? (
-        <div className="flex items-center justify-center p-12">
-          <Loader2 className="w-6 h-6 animate-spin text-brand-orange" />
-        </div>
-      ) : filtered.length === 0 ? (
-        <EmptyState
-          icon={SchoolIcon}
-          title={schools.length === 0 ? 'No schools yet' : 'No matches'}
-          description={
-            schools.length === 0
-              ? 'Add your first school to assign to employees.'
-              : 'Try a different search.'
-          }
-          action={
-            canCreate && schools.length === 0
-              ? {
-                  label: 'Add First School',
-                  icon: Plus,
-                  onClick: () => {
-                    setEditing(null);
-                    setFormOpen(true);
-                  },
-                }
-              : undefined
-          }
-        />
-      ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {filtered.map((s) => (
-            <div key={s.id} className="card !p-5 hover:shadow-lift">
-              <div className="flex items-start justify-between gap-2">
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <h3 className="font-display text-lg font-bold text-brand-choco">
-                      {s.name}
-                    </h3>
-                    {!s.active && (
-                      <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full bg-brand-cream-dark text-brand-choco-soft">
-                        Inactive
-                      </span>
-                    )}
-                  </div>
-                  {s.address && (
-                    <p className="text-sm text-brand-choco-soft mt-1 break-words">{s.address}</p>
-                  )}
-                </div>
-                <div className="flex gap-1 flex-shrink-0">
-                  {canEdit && (
-                    <button
-                      onClick={() => {
-                        setEditing(s);
-                        setFormOpen(true);
-                      }}
-                      className="w-8 h-8 rounded-xl hover:bg-brand-cream-dark flex items-center justify-center text-brand-choco-soft hover:text-brand-choco"
-                    >
-                      <Edit className="w-4 h-4" />
-                    </button>
-                  )}
-                  {canDelete && (
-                    <button
-                      onClick={() => setDeleting(s)}
-                      className="w-8 h-8 rounded-xl hover:bg-pastel-pink flex items-center justify-center text-red-600"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  )}
-                </div>
-              </div>
-
-              <div className="grid grid-cols-3 gap-3 mt-4 text-sm">
-                <div>
-                  <div className="text-[10px] font-bold text-brand-choco-soft uppercase">In</div>
-                  <div className="font-bold text-brand-choco">{s.inTime}</div>
-                </div>
-                <div>
-                  <div className="text-[10px] font-bold text-brand-choco-soft uppercase">Out</div>
-                  <div className="font-bold text-brand-choco">{s.outTime}</div>
-                </div>
-                <div>
-                  <div className="text-[10px] font-bold text-brand-choco-soft uppercase">Radius</div>
-                  <div className="font-bold text-brand-choco">{s.radiusM}m</div>
-                </div>
-              </div>
-
-              <div className="mt-3">
-                <div className="text-[10px] font-bold text-brand-choco-soft uppercase mb-1">
-                  Working days
-                </div>
-                <div className="flex gap-1">
-                  {DAYS.map((d) => {
-                    const on = s.workingDays.includes(d);
-                    return (
-                      <span
-                        key={d}
-                        className={cn(
-                          'text-[10px] px-1.5 py-0.5 rounded font-bold',
-                          on
-                            ? 'bg-brand-orange text-white'
-                            : 'bg-brand-cream-dark text-brand-choco-soft'
-                        )}
-                      >
-                        {DAY_LABELS[d][0]}
-                      </span>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {s.lat != null && s.lng != null && (
-                <a
-                  href={`https://www.google.com/maps?q=${s.lat},${s.lng}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1.5 text-xs font-semibold text-brand-orange hover:text-brand-orange-dark mt-3"
+      {/* Empty states */}
+      {filtered.length === 0 && (
+        <div className="bg-white rounded-xl border border-brand-choco/10 p-12 text-center">
+          <SchoolIcon size={48} className="mx-auto text-brand-choco/20 mb-3" />
+          {!isAdminLevel && (!user?.assignedSchools || user.assignedSchools.length === 0) ? (
+            <>
+              <p className="text-brand-choco font-medium">No schools assigned</p>
+              <p className="text-sm text-brand-choco/60 mt-1">
+                Contact your administrator to assign a school for attendance.
+              </p>
+            </>
+          ) : query ? (
+            <>
+              <p className="text-brand-choco font-medium">No matching schools</p>
+              <p className="text-sm text-brand-choco/60 mt-1">No schools found for "{query}".</p>
+            </>
+          ) : (
+            <>
+              <p className="text-brand-choco font-medium">No schools yet</p>
+              {canCreate && (
+                <Link
+                  to="/attendance/admin/schools/new"
+                  className="inline-flex items-center gap-2 mt-3 px-4 py-2 bg-brand-orange text-white rounded-lg"
                 >
-                  <MapPin className="w-3 h-3" />
-                  View on Google Maps
-                  <ExternalLink className="w-3 h-3" />
-                </a>
+                  <Plus size={16} /> Add first school
+                </Link>
               )}
-            </div>
-          ))}
+            </>
+          )}
         </div>
       )}
 
-      <Modal
-        open={formOpen}
-        onClose={() => setFormOpen(false)}
-        title={editing ? `Edit ${editing.name}` : 'Add School'}
-        size="lg"
-        closeOnOverlay={false}
-      >
-        <SchoolFormBody school={editing} onClose={() => setFormOpen(false)} />
-      </Modal>
-
-      <ConfirmDialog
-        open={!!deleting}
-        onClose={() => setDeleting(null)}
-        onConfirm={handleDelete}
-        title="Delete School?"
-        message={`"${deleting?.name}" will be permanently removed. Employees assigned to it will lose access for check-in.`}
-        confirmLabel="Delete"
-        loading={deleteBusy}
-      />
+      {/* Grid */}
+      {filtered.length > 0 && (
+        <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+          {filtered.map((s) => (
+            <SchoolCard
+              key={s.id}
+              school={s}
+              canEdit={canEdit}
+              canDelete={canDelete}
+            />
+          ))}
+        </div>
+      )}
     </div>
   );
 }
 
-function SchoolFormBody({ school, onClose }: { school: School | null; onClose: () => void }) {
-  const isEdit = !!school;
-  const [name, setName] = useState(school?.name ?? '');
-  const [inTime, setInTime] = useState(school?.inTime ?? '09:00');
-  const [outTime, setOutTime] = useState(school?.outTime ?? '17:00');
-  const [workingDays, setWorkingDays] = useState<WorkingDay[]>(
-    school?.workingDays ?? ['MO', 'TU', 'WE', 'TH', 'FR']
-  );
-  const [address, setAddress] = useState(school?.address ?? '');
-  const [lat, setLat] = useState<string>(school?.lat != null ? String(school.lat) : '');
-  const [lng, setLng] = useState<string>(school?.lng != null ? String(school.lng) : '');
-  const [radiusM, setRadiusM] = useState<string>(String(school?.radiusM ?? 100));
-  const [active, setActive] = useState(school?.active !== false);
-  const [busy, setBusy] = useState(false);
-  const [geocoding, setGeocoding] = useState(false);
-
-  const toggleDay = (d: WorkingDay) =>
-    setWorkingDays((prev) =>
-      prev.includes(d) ? prev.filter((x) => x !== d) : [...prev, d]
-    );
-
-  const smartGeocode = async () => {
-    const hasCoords = lat !== '' && lng !== '';
-    if (!address.trim() && !hasCoords) {
-      return toast.error('Enter an address OR coordinates first');
-    }
-    setGeocoding(true);
-    try {
-      if (address.trim()) {
-        const r = await forwardGeocode(address);
-        if (r) {
-          setLat(String(r.lat));
-          setLng(String(r.lng));
-          toast.success('Coordinates fetched');
-        } else {
-          toast.error('Address not found. Try street + pincode, or paste coords from Maps.');
-        }
-      } else {
-        const addr = await reverseGeocode(parseFloat(lat), parseFloat(lng));
-        if (addr) {
-          setAddress(addr);
-          toast.success('Address fetched');
-        } else {
-          toast.error('Could not resolve address');
-        }
-      }
-    } catch {
-      toast.error('Geocode failed');
-    } finally {
-      setGeocoding(false);
-    }
-  };
-
-  const save = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!name.trim()) return toast.error('School name is required');
-    setBusy(true);
-    try {
-      const payload = {
-        name: name.trim(),
-        inTime,
-        outTime,
-        workingDays,
-        address,
-        lat: lat === '' ? 0 : parseFloat(lat),
-        lng: lng === '' ? 0 : parseFloat(lng),
-        radiusM: parseInt(radiusM) || 100,
-        active,
-      };
-      if (isEdit && school) {
-        await updateSchool(school.id, payload, {
-          name: school.name,
-          inTime: school.inTime,
-          outTime: school.outTime,
-          radiusM: school.radiusM,
-          active: school.active,
-        });
-        toast.success('School updated');
-      } else {
-        await createSchool(payload);
-        toast.success('School created');
-      }
-      onClose();
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Save failed');
-    } finally {
-      setBusy(false);
-    }
-  };
+function SchoolCard({
+  school,
+  canEdit,
+  canDelete,
+}: {
+  school: School;
+  canEdit: boolean;
+  canDelete: boolean;
+}) {
+  const workingDays = school.workingDays || [];
+  const mapsUrl =
+    school.lat != null && school.lng != null
+      ? `https://www.google.com/maps?q=${school.lat},${school.lng}`
+      : null;
 
   return (
-    <form onSubmit={save} className="p-6 space-y-5">
-      <div>
-        <label className="text-sm font-semibold mb-1.5 block">School name *</label>
-        <input
-          type="text"
-          required
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          className="input-field"
-          placeholder="e.g. STEM Primary School Noida"
-        />
-      </div>
-
-      <div className="grid grid-cols-2 gap-3">
-        <div>
-          <label className="text-sm font-semibold mb-1.5 block">In time *</label>
-          <input
-            type="time"
-            required
-            value={inTime}
-            onChange={(e) => setInTime(e.target.value)}
-            className="input-field"
-          />
-          <p className="text-[10px] text-brand-choco-soft mt-1">Check-in after this = late</p>
+    <div className="card !p-5 sm:!p-6">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0 flex-1">
+          <h3 className="font-sans text-base font-bold text-brand-choco break-words">
+            {school.name || '(unnamed)'}
+          </h3>
+          {school.address && (
+            <p className="text-sm text-brand-choco/60 mt-1 line-clamp-2">
+              {school.address}
+            </p>
+          )}
         </div>
-        <div>
-          <label className="text-sm font-semibold mb-1.5 block">Out time *</label>
-          <input
-            type="time"
-            required
-            value={outTime}
-            onChange={(e) => setOutTime(e.target.value)}
-            className="input-field"
-          />
-        </div>
-      </div>
-
-      <div>
-        <label className="text-sm font-semibold mb-1.5 block">Working days *</label>
-        <div className="flex flex-wrap gap-2">
-          {DAYS.map((d) => (
-            <button
-              key={d}
-              type="button"
-              onClick={() => toggleDay(d)}
-              className={cn(
-                'px-3 py-2 rounded-2xl text-xs font-bold transition',
-                workingDays.includes(d)
-                  ? 'bg-brand-orange text-white'
-                  : 'bg-brand-cream-dark text-brand-choco-soft'
-              )}
+        {(canEdit || canDelete) && (
+          <div className="flex items-center gap-1">
+            {canEdit && <Link
+              to={`/attendance/admin/schools/${school.id}/edit`}
+              className="p-2 rounded-lg hover:bg-brand-orange/10 text-brand-choco/60 hover:text-brand-orange"
+              title="Edit"
             >
-              {DAY_LABELS[d]}
-            </button>
-          ))}
-        </div>
+              <Pencil size={16} />
+            </Link>}
+            {canDelete && (
+              <Link
+                to={`/attendance/admin/schools/${school.id}/delete`}
+                className="p-2 rounded-lg hover:bg-red-50 text-brand-choco/60 hover:text-red-600"
+                title="Delete"
+              >
+                <Trash2 size={16} />
+              </Link>
+            )}
+          </div>
+        )}
       </div>
 
-      <div>
-        <label className="text-sm font-semibold mb-1.5 block">Address (for geofence)</label>
-        <div className="flex gap-2">
-          <input
-            type="text"
-            value={address}
-            onChange={(e) => setAddress(e.target.value)}
-            placeholder="e.g. Sector 62, Noida"
-            className="input-field flex-1"
-          />
-          <button
-            type="button"
-            className="btn-secondary whitespace-nowrap"
-            onClick={smartGeocode}
-            disabled={geocoding}
-          >
-            {geocoding ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
-            {address.trim() ? 'Get coords' : 'Get address'}
-          </button>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-3 gap-3 mt-4 pt-4 border-t border-brand-choco/5">
         <div>
-          <label className="text-sm font-semibold mb-1.5 block">Latitude</label>
-          <input
-            type="number"
-            step="any"
-            value={lat}
-            onChange={(e) => setLat(e.target.value)}
-            className="input-field"
-          />
+          <p className="text-[10px] font-semibold text-brand-choco/50 uppercase tracking-wide">
+            In
+          </p>
+          <p className="text-brand-choco font-medium mt-0.5">{school.inTime || '—'}</p>
         </div>
         <div>
-          <label className="text-sm font-semibold mb-1.5 block">Longitude</label>
-          <input
-            type="number"
-            step="any"
-            value={lng}
-            onChange={(e) => setLng(e.target.value)}
-            className="input-field"
-          />
+          <p className="text-[10px] font-semibold text-brand-choco/50 uppercase tracking-wide">
+            Out
+          </p>
+          <p className="text-brand-choco font-medium mt-0.5">{school.outTime || '—'}</p>
         </div>
         <div>
-          <label className="text-sm font-semibold mb-1.5 block">Radius (m)</label>
-          <input
-            type="number"
-            min="10"
-            value={radiusM}
-            onChange={(e) => setRadiusM(e.target.value)}
-            className="input-field"
-          />
+          <p className="text-[10px] font-semibold text-brand-choco/50 uppercase tracking-wide">
+            Radius
+          </p>
+          <p className="text-brand-choco font-medium mt-0.5">
+            {school.radiusM ? `${school.radiusM}m` : '—'}
+          </p>
         </div>
       </div>
 
-      <label className="flex items-center gap-2 cursor-pointer">
-        <input
-          type="checkbox"
-          checked={active}
-          onChange={(e) => setActive(e.target.checked)}
-          className="w-4 h-4 accent-brand-orange"
-        />
-        <span className="text-sm text-brand-choco">Active (uncheck to hide from employees)</span>
-      </label>
+      {workingDays.length > 0 && (
+        <div className="mt-4">
+          <p className="text-[10px] font-semibold text-brand-choco/50 uppercase tracking-wide mb-1.5">
+            Working Days
+          </p>
+          <div className="flex gap-1">
+            {WEEKDAY_ORDER.map((d) => {
+              const active = workingDays.includes(d);
+              return (
+                <span
+                  key={d}
+                  className={`w-6 h-6 rounded-md text-xs font-medium flex items-center justify-center ${
+                    active
+                      ? 'bg-brand-orange text-white'
+                      : 'bg-brand-choco/5 text-brand-choco/40'
+                  }`}
+                >
+                  {WEEKDAY_LETTERS[d]}
+                </span>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
-      <div className="flex justify-end gap-2 pt-4 border-t border-brand-choco/8">
-        <button type="button" onClick={onClose} disabled={busy} className="btn-secondary">
-          Cancel
-        </button>
-        <button type="submit" disabled={busy} className="btn-primary">
-          {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : isEdit ? 'Save' : 'Create'}
-        </button>
-      </div>
-    </form>
+      {mapsUrl && (
+        <a
+          href={mapsUrl}
+          target="_blank"
+          rel="noreferrer"
+          className="mt-4 inline-flex items-center gap-1.5 text-sm text-brand-orange hover:underline"
+        >
+          <MapPin size={14} />
+          View on Google Maps
+          <ExternalLink size={12} />
+        </a>
+      )}
+    </div>
   );
 }

@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Navigate, useNavigate } from 'react-router-dom';
 import { Loader2, Info, ArrowLeft } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -9,8 +9,6 @@ import { useAttendanceSettings } from '@/hooks/useAttendanceSettings';
 import { todayKey, daysBetween } from '@/lib/attendance/datetime';
 import { cn } from '@/lib/utils';
 
-// Maximum days per single leave application. Longer leaves must be split.
-const MAX_DAYS_PER_APPLICATION = 3;
 
 export default function ApplyLeavePage() {
   const { userDoc } = useAuth();
@@ -18,8 +16,7 @@ export default function ApplyLeavePage() {
   const nav = useNavigate();
   const uid = userDoc?.uid ?? '';
 
-  const { balance } = useLeaveBalance(uid || null);
-  const { settings } = useAttendanceSettings();
+  const { settings, loading: settingsLoading, error: settingsError } = useAttendanceSettings();
   const leaveTypes = settings.leaveTypes ?? [];
 
   const [type, setType] = useState<string>(leaveTypes[0]?.code ?? 'CL');
@@ -27,38 +24,49 @@ export default function ApplyLeavePage() {
   const [to, setTo] = useState<string>(todayKey());
   const [reason, setReason] = useState('');
   const [busy, setBusy] = useState(false);
+  const { balance, loading: balanceLoading, error: balanceError } = useLeaveBalance(uid || null, Number(from.slice(0, 4)) || new Date().getFullYear());
+  useEffect(() => {
+    if (!leaveTypes.some((item) => item.code === type)) setType(leaveTypes[0]?.code ?? '');
+  }, [leaveTypes, type]);
 
   if (!can('leaves.applyOwn')) {
     return <Navigate to="/" replace />;
   }
 
-  const days = useMemo(() => daysBetween(from, to), [from, to]);
-  const avail = balance?.balances?.[type] ?? 0;
+  if (settingsError || balanceError) return <p role="alert">Unable to load leave settings or balances. Check your connection and reload.</p>;
+  if (settingsLoading || balanceLoading) return <p>Loading leave policy…</p>;
+
+  const days = daysBetween(from, to);
+  const avail = balance?.balances?.[type] ?? leaveTypes.find((item) => item.code === type)?.default ?? 0;
   const selectedType = leaveTypes.find((t) => t.code === type);
+  const maxDays = selectedType?.maxDaysPerApplication ?? 3;
   const overQuota = days > avail;
-  const overLimit = days > MAX_DAYS_PER_APPLICATION;
+  const overLimit = days > maxDays;
 
   const onFromChange = (val: string) => {
     setFrom(val);
+    if (!val) return;
     const maxTo = new Date(val);
-    maxTo.setDate(maxTo.getDate() + MAX_DAYS_PER_APPLICATION - 1);
+    maxTo.setDate(maxTo.getDate() + maxDays - 1);
     const maxToStr = maxTo.toISOString().slice(0, 10);
     if (new Date(to) > maxTo) setTo(maxToStr);
     if (new Date(val) > new Date(to)) setTo(val);
   };
 
-  const maxToDate = useMemo(() => {
+  const maxToDate = (() => {
     if (!from) return undefined;
     const d = new Date(from);
-    d.setDate(d.getDate() + MAX_DAYS_PER_APPLICATION - 1);
+    d.setDate(d.getDate() + maxDays - 1);
     return d.toISOString().slice(0, 10);
-  }, [from]);
+  })();
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (busy || settingsLoading || balanceLoading || !selectedType) return;
+    if (days < 1 || from.slice(0, 4) !== to.slice(0, 4)) return toast.error('Choose dates within the same calendar year.');
     if (overLimit) {
       return toast.error(
-        `Max ${MAX_DAYS_PER_APPLICATION} days per application. Split longer leaves.`
+        `Max ${maxDays} days per application. Split longer leaves.`
       );
     }
     if (overQuota) {
@@ -100,7 +108,7 @@ export default function ApplyLeavePage() {
           <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
             {leaveTypes.map((t) => {
               const isActive = type === t.code;
-              const bal = balance?.balances?.[t.code] ?? 0;
+              const bal = balance?.balances?.[t.code] ?? t.default;
               return (
                 <button
                   type="button"
@@ -158,7 +166,7 @@ export default function ApplyLeavePage() {
         </div>
         <p className="text-[11px] text-brand-choco-soft flex items-center gap-1 -mt-2">
           <Info className="w-3 h-3" />
-          Max {MAX_DAYS_PER_APPLICATION} days per application. Split longer leaves into separate
+          Max {maxDays} days per application. Split longer leaves into separate
           requests.
         </p>
 
@@ -189,7 +197,7 @@ export default function ApplyLeavePage() {
             </div>
             {overLimit && (
               <div className="text-xs font-semibold text-red-600">
-                Max {MAX_DAYS_PER_APPLICATION} days allowed
+                Max {maxDays} days allowed
               </div>
             )}
             {!overLimit && overQuota && (
@@ -210,7 +218,7 @@ export default function ApplyLeavePage() {
           <button
             type="submit"
             className="btn-primary"
-            disabled={busy || overQuota || overLimit || !type}
+            disabled={busy || settingsLoading || balanceLoading || overQuota || overLimit || !selectedType || days < 1}
           >
             {busy ? (
               <>

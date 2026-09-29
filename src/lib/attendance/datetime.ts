@@ -100,8 +100,12 @@ export function weekdayCode(d: Date): WeekdayCode {
   return WEEKDAY_CODES[d.getDay()];
 }
 
-export function isWorkingDay(dateStr: string, workingDays: readonly string[]): boolean {
-  const d = new Date(dateStr);
-  if (isNaN(d.getTime())) return false;
-  return workingDays.includes(weekdayCode(d));
+export function isWorkingDay(dateStr: string, workingDays: readonly string[], saturdayOffWeeks: readonly number[] = []): boolean {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateStr);
+  if (!match) return false;
+  const [, year, month, day] = match.map(Number);
+  const d = new Date(year, month - 1, day);
+  if (d.getFullYear() !== year || d.getMonth() !== month - 1 || d.getDate() !== day) return false;
+  if (!workingDays.includes(weekdayCode(d))) return false;
+  return d.getDay() !== 6 || !saturdayOffWeeks.includes(Math.ceil(day / 7));
 }

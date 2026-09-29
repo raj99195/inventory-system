@@ -5,11 +5,13 @@ import {
   setDoc,
   updateDoc,
   getDoc,
+  getDocFromServer,
+  runTransaction,
   serverTimestamp,
 } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import type { AttendanceSettings } from '@/types';
-import { DEFAULT_LEAVE_TYPES } from '@/lib/attendance/leaveTypes';
+import { DEFAULT_LEAVE_TYPES, validateLeaveTypes } from '@/lib/attendance/leaveTypes';
 import { logAudit } from '@/lib/audit';
 
 const COL = 'settings';
@@ -21,6 +23,7 @@ const DOC_ID = 'general';
  */
 export const DEFAULT_ATTENDANCE_SETTINGS: AttendanceSettings = {
   id: 'general',
+  saturdayOffWeeks: [],
   officeStartTime: '09:30',
   officeEndTime: '18:00',
   lateGraceMinutes: 15,
@@ -55,41 +58,41 @@ export function useAttendanceSettings() {
   );
   const [hasDoc, setHasDoc] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<Error | null>(null);
 
   useEffect(() => {
     const ref = doc(db, COL, DOC_ID);
-    const unsub = onSnapshot(
-      ref,
-      (snap) => {
-        if (snap.exists()) {
-          setSettings({
-            ...DEFAULT_ATTENDANCE_SETTINGS,
-            ...(snap.data() as Partial<AttendanceSettings>),
-            id: 'general',
-          });
-          setHasDoc(true);
-        } else {
-          setSettings(DEFAULT_ATTENDANCE_SETTINGS);
-          setHasDoc(false);
-        }
-        setLoading(false);
-      },
-      (err) => {
-        console.error('[useAttendanceSettings] snapshot error:', err);
-        setLoading(false);
-      }
-    );
-    return unsub;
+    let cancelled = false;
+    let serverReceived = false;
+    const receive = (snap: Awaited<ReturnType<typeof getDoc>>) => {
+      if (cancelled || snap.metadata.fromCache || snap.metadata.hasPendingWrites) return;
+      serverReceived = true;
+      const stored = snap.exists() ? snap.data() as Partial<AttendanceSettings> : {};
+      setSettings({ ...DEFAULT_ATTENDANCE_SETTINGS, ...stored,
+        orgGeofence: { ...DEFAULT_ATTENDANCE_SETTINGS.orgGeofence, ...stored.orgGeofence }, id: 'general' });
+      setHasDoc(snap.exists());
+      setError(null);
+      setLoading(false);
+    };
+    const unsub = onSnapshot(ref, { includeMetadataChanges: true }, receive, (err) => {
+      if (!cancelled) { setError(err); setLoading(false); }
+    });
+    void getDocFromServer(ref).then((snap) => {
+      if (!serverReceived) receive(snap);
+    }).catch((err: Error) => {
+      if (!cancelled && !serverReceived) { setError(err); setLoading(false); }
+    });
+    return () => { cancelled = true; unsub(); };
   }, []);
 
-  return { settings, hasDoc, loading };
+  return { settings, hasDoc, loading, error };
 }
 
 // ─── Actions ───────────────────────────────────────────────────
 
 /** One-shot fetch (for scripts / non-reactive use). */
 export async function getAttendanceSettings(): Promise<AttendanceSettings> {
-  const snap = await getDoc(doc(db, COL, DOC_ID));
+  const snap = await getDocFromServer(doc(db, COL, DOC_ID));
   if (!snap.exists()) return DEFAULT_ATTENDANCE_SETTINGS;
   return {
     ...DEFAULT_ATTENDANCE_SETTINGS,
@@ -106,24 +109,33 @@ export async function saveAttendanceSettings(
   patch: Partial<AttendanceSettings>,
   previousValue?: Partial<AttendanceSettings>
 ): Promise<void> {
-  const ref = doc(db, COL, DOC_ID);
-  const snap = await getDoc(ref);
-  if (snap.exists()) {
-    await updateDoc(ref, {
-      ...patch,
-      updatedAt: serverTimestamp(),
-    });
-  } else {
-    await setDoc(ref, {
-      ...DEFAULT_ATTENDANCE_SETTINGS,
-      ...patch,
-      updatedAt: serverTimestamp(),
-    });
+  if (patch.saturdayOffWeeks && patch.saturdayOffWeeks.some((week) => !Number.isInteger(week) || week < 1 || week > 5)) throw new Error('Saturday off must be between 1st and 5th.');
+  if (patch.leaveTypes) {
+    const error = validateLeaveTypes(patch.leaveTypes);
+    if (error) throw new Error(error);
   }
+  const ref = doc(db, COL, DOC_ID);
+  let existed = false;
+  await runTransaction(db, async (tx) => {
+    const snap = await tx.get(ref);
+    existed = snap.exists();
+    const current = snap.data() as Partial<AttendanceSettings> | undefined;
+    const baselines = { ...current?.leaveAllowanceBaselines };
+    // Record the old policy once so legacy balances keep their used-day history.
+    for (const type of current?.leaveTypes ?? DEFAULT_LEAVE_TYPES) {
+      if (baselines[type.code] == null) baselines[type.code] = type.default;
+    }
+    for (const type of patch.leaveTypes ?? []) {
+      if (baselines[type.code] == null) baselines[type.code] = type.default;
+    }
+    const payload = { ...patch, leaveAllowanceBaselines: baselines, updatedAt: serverTimestamp() };
+    if (existed) tx.update(ref, payload);
+    else tx.set(ref, { ...DEFAULT_ATTENDANCE_SETTINGS, ...payload });
+  });
 
   await logAudit({
     module: 'settings',
-    action: snap.exists() ? 'update' : 'create',
+    action: existed ? 'update' : 'create',
     recordId: DOC_ID,
     recordType: 'attendanceSettings',
     previousValue,

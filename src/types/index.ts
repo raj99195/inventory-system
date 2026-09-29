@@ -477,6 +477,9 @@ export interface LeaveBalanceMap {
 }
 
 export interface LeaveBalance {
+  calculationVersion?: number;
+  adjustments?: LeaveBalanceMap;
+  allowances?: LeaveBalanceMap;
   id: string;
   userId: string;
   year: number;
@@ -484,6 +487,7 @@ export interface LeaveBalance {
 }
 
 export interface LeaveTypeConfig {
+  maxDaysPerApplication?: number;
   code: string;
   name: string;
   default: number;
@@ -510,6 +514,8 @@ export interface School {
 
 // ==================== ATTENDANCE SETTINGS ====================
 export interface AttendanceSettings {
+  saturdayOffWeeks?: number[];
+  leaveAllowanceBaselines?: LeaveBalanceMap;
   id: 'general';
   officeStartTime: string;
   officeEndTime: string;

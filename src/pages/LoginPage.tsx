@@ -18,6 +18,10 @@ import {
 import toast from 'react-hot-toast';
 import { useAuth } from '@/contexts/AuthContext';
 import Logo from '@/components/ui/Logo';
+import Modal from '@/components/ui/Modal';
+import { sendPasswordResetEmail } from 'firebase/auth';
+import { FirebaseError } from 'firebase/app';
+import { auth } from '@/lib/firebase';
 
 // Animated counting number
 function AnimatedNumber({ value, suffix = '+' }: { value: number; suffix?: string }) {
@@ -68,6 +72,35 @@ export default function LoginPage() {
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [resetOpen, setResetOpen] = useState(false);
+  const [resetEmail, setResetEmail] = useState('');
+  const [resetBusy, setResetBusy] = useState(false);
+  const [resetSent, setResetSent] = useState(false);
+  const [resetError, setResetError] = useState('');
+
+  const handlePasswordReset = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (resetBusy || resetSent) return;
+    const address = resetEmail.trim();
+    if (!address) { setResetError('Enter your email address.'); return; }
+    setResetBusy(true);
+    setResetError('');
+    try {
+      await sendPasswordResetEmail(auth, address);
+      setResetSent(true);
+    } catch (error) {
+      const code = error instanceof FirebaseError ? error.code : '';
+      if (code === 'auth/user-not-found') {
+        setResetSent(true);
+      } else {
+        setResetError(code === 'auth/invalid-email' ? 'Enter a valid email address.'
+          : code === 'auth/too-many-requests' ? 'Too many requests. Please try again later.'
+          : code === 'auth/network-request-failed' ? 'Check your internet connection and try again.'
+          : 'Could not send the reset email. Please try again.');
+      }
+    } finally { setResetBusy(false); }
+  };
+
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -92,6 +125,29 @@ export default function LoginPage() {
 
   return (
     <div className="min-h-screen flex bg-brand-cream overflow-hidden">
+      <Modal open={resetOpen} onClose={() => { if (!resetBusy) setResetOpen(false); }} title="Reset your password" size="sm" closeOnOverlay={!resetBusy}>
+        <form onSubmit={handlePasswordReset} className="p-6 space-y-5">
+          {resetSent ? (
+            <div role="status" className="rounded-2xl bg-green-50 p-4 text-sm text-green-800">
+              If an account exists for <strong className="break-all">{resetEmail.trim()}</strong>, you'll receive a password reset link. Check your inbox and spam folder.
+            </div>
+          ) : <>
+            <p className="text-sm text-brand-choco-soft">Enter your account email and we'll send you a link to choose a new password.</p>
+            <div>
+              <label htmlFor="reset-email" className="block text-sm font-semibold mb-2">Email address</label>
+              <input id="reset-email" type="email" autoComplete="email" autoFocus required disabled={resetBusy}
+                value={resetEmail} onChange={(event) => { setResetEmail(event.target.value); setResetError(''); }}
+                className="input-field" placeholder="you@company.com" aria-invalid={!!resetError} aria-describedby={resetError ? 'reset-error' : undefined} />
+            </div>
+            {resetError && <p id="reset-error" role="alert" className="text-sm text-red-600">{resetError}</p>}
+          </>}
+          <div className="flex flex-col-reverse sm:flex-row justify-end gap-3">
+            <button type="button" disabled={resetBusy} onClick={() => setResetOpen(false)} className="btn-secondary">Back to sign in</button>
+            {!resetSent && <button type="submit" disabled={resetBusy} className="btn-primary disabled:opacity-60">{resetBusy ? 'Sending…' : 'Send reset link'}</button>}
+          </div>
+        </form>
+      </Modal>
+
       {/* Left animated panel */}
       <div className="hidden lg:flex lg:w-1/2 relative overflow-hidden">
         {/* Animated gradient background */}
@@ -407,6 +463,13 @@ export default function LoginPage() {
                     </button>
                   </div>
                 </motion.div>
+
+                <div className="flex justify-end">
+                  <button type="button" disabled={loading} className="text-sm font-semibold text-brand-orange hover:text-brand-orange-dark hover:underline disabled:opacity-60"
+                    onClick={() => { setResetEmail(email.trim()); setResetError(''); setResetSent(false); setResetOpen(true); }}>
+                    Forgot password?
+                  </button>
+                </div>
 
                 <motion.button
                   initial={{ opacity: 0, y: 10 }}

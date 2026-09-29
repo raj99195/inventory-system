@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
 import {
+  getDocFromServer,
+  getDocsFromServer,
   collection,
   onSnapshot,
   query,
@@ -15,6 +17,9 @@ import {
 import { db, auth } from '@/lib/firebase';
 import type { Leave, LeaveBalance, LeaveBalanceMap } from '@/types';
 import { logAudit } from '@/lib/audit';
+import { getAttendanceSettings, useAttendanceSettings } from '@/hooks/useAttendanceSettings';
+import { resolveLeaveBalances } from '@/lib/attendance/leaveBalances';
+import { DEFAULT_LEAVE_TYPES } from '@/lib/attendance/leaveTypes';
 import { daysBetween } from '@/lib/attendance/datetime';
 
 const COL = 'leaves';
@@ -126,8 +131,12 @@ export function useLeaveBalance(
   userId?: string | null,
   year: number = new Date().getFullYear()
 ) {
+  const { settings, loading: settingsLoading, error: settingsError } = useAttendanceSettings();
+  const [error, setError] = useState<Error | null>(null);
   const [balance, setBalance] = useState<LeaveBalance | null>(null);
   const [loading, setLoading] = useState(true);
+  const [history, setHistory] = useState<Leave[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(true);
 
   useEffect(() => {
     if (!userId) {
@@ -135,6 +144,15 @@ export function useLeaveBalance(
       setLoading(false);
       return;
     }
+    setLoading(true);
+    setBalance(null);
+    setError(null);
+    setHistoryLoading(true);
+    setHistory([]);
+    const stopHistory = onSnapshot(query(collection(db, COL), where('userId', '==', userId)), (snap) => {
+      setHistory(snap.docs.map((item) => ({ id: item.id, ...item.data() } as Leave)));
+      setHistoryLoading(false);
+    }, (err) => { setError(err); setHistoryLoading(false); });
     const ref = doc(db, BAL_COL, balanceId(userId, year));
     const unsub = onSnapshot(
       ref,
@@ -147,14 +165,37 @@ export function useLeaveBalance(
         setLoading(false);
       },
       (err) => {
-        console.error('[useLeaveBalance] snapshot error:', err);
+        setError(err);
         setLoading(false);
       }
     );
-    return unsub;
+    return () => { unsub(); stopHistory(); };
   }, [userId, year]);
 
-  return { balance, loading };
+  const effective = resolveLeaveBalances(settings.leaveTypes, balance, settings.leaveAllowanceBaselines, history, year);
+  return {
+    balance: userId ? { id: balanceId(userId, year), userId, year, ...effective } : null,
+    loading: loading || settingsLoading || (!!userId && historyLoading),
+    error: error ?? settingsError,
+  };
+}
+
+/** Repair legacy totals once, checking source records again within the transaction. */
+async function ensureVerifiedBalance(userId: string, year: number): Promise<void> {
+  const ref = doc(db, BAL_COL, balanceId(userId, year));
+  const existing = await getDocFromServer(ref);
+  if (existing.data()?.calculationVersion === 2) return;
+  const history = await getDocsFromServer(query(collection(db, COL), where('userId', '==', userId)));
+  await runTransaction(db, async (tx) => {
+    const current = await tx.get(ref);
+    if (current.data()?.calculationVersion === 2) return;
+    const settings = (await tx.get(doc(db, 'settings', 'general'))).data();
+    const snapshots = await Promise.all(history.docs.map((item) => tx.get(item.ref)));
+    const leaves = snapshots.filter((item) => item.exists()).map((item) => ({ id: item.id, ...item.data() } as Leave));
+    const effective = resolveLeaveBalances(settings?.leaveTypes ?? DEFAULT_LEAVE_TYPES,
+      current.exists() ? current.data() as LeaveBalance : null, {}, leaves, year);
+    tx.set(ref, { userId, year, ...effective, calculationVersion: 2 }, { merge: true });
+  });
 }
 
 // ─── Actions (atomic where balances change) ────────────────────
@@ -181,6 +222,11 @@ export async function applyLeave(params: ApplyLeaveParams): Promise<string> {
   }
 
   const days = daysBetween(fromDate, toDate);
+  const settings = await getAttendanceSettings();
+  const policy = settings.leaveTypes.find((type) => type.code === leaveType);
+  if (!policy) throw new Error('This leave type is no longer available');
+  if (days < 1 || fromDate.slice(0, 4) !== toDate.slice(0, 4)) throw new Error('Choose dates within the same calendar year');
+  if (days > (policy.maxDaysPerApplication ?? 3)) throw new Error(`Maximum ${policy.maxDaysPerApplication ?? 3} days per application`);
   const payload: Omit<Leave, 'id'> = {
     userId,
     leaveType,
@@ -223,6 +269,10 @@ export async function approveLeave(
 
   const leaveRef = doc(db, COL, leaveId);
 
+  const source = await getDocFromServer(leaveRef);
+  if (!source.exists()) throw new Error('Leave not found');
+  await ensureVerifiedBalance(source.data().userId, Number(source.data().fromDate.slice(0, 4)));
+
   await runTransaction(db, async (tx) => {
     const leaveSnap = await tx.get(leaveRef);
     if (!leaveSnap.exists()) throw new Error('Leave not found');
@@ -235,9 +285,12 @@ export async function approveLeave(
     const balRef = doc(db, BAL_COL, balanceId(leave.userId, year));
     const balSnap = await tx.get(balRef);
 
-    const currentBalances: LeaveBalanceMap = balSnap.exists()
-      ? ((balSnap.data() as LeaveBalance).balances ?? {})
-      : {};
+    const settingsSnap = await tx.get(doc(db, 'settings', 'general'));
+    const settings = settingsSnap.data();
+    const types = settings?.leaveTypes ?? DEFAULT_LEAVE_TYPES;
+    if (!types.some((type: { code: string }) => type.code === leave.leaveType)) throw new Error('This leave type is no longer available');
+    const effective = resolveLeaveBalances(types, balSnap.exists() ? balSnap.data() as LeaveBalance : null, settings?.leaveAllowanceBaselines);
+    const currentBalances = effective.balances;
     const availableForType = currentBalances[leave.leaveType] ?? 0;
 
     // LOP always allowed to go negative? Keep simple: block if insufficient.
@@ -253,12 +306,13 @@ export async function approveLeave(
     };
 
     if (balSnap.exists()) {
-      tx.update(balRef, { balances: newBalances });
+      tx.update(balRef, { balances: newBalances, allowances: effective.allowances });
     } else {
       tx.set(balRef, {
         userId: leave.userId,
         year,
         balances: newBalances,
+        allowances: effective.allowances,
       });
     }
 
@@ -326,6 +380,10 @@ export async function cancelLeave(leaveId: string): Promise<void> {
   let refundInfo: { leaveType: string; days: number; userId: string } | null =
     null;
 
+  const source = await getDocFromServer(leaveRef);
+  if (!source.exists()) throw new Error('Leave not found');
+  await ensureVerifiedBalance(source.data().userId, Number(source.data().fromDate.slice(0, 4)));
+
   await runTransaction(db, async (tx) => {
     const snap = await tx.get(leaveRef);
     if (!snap.exists()) throw new Error('Leave not found');
@@ -339,17 +397,18 @@ export async function cancelLeave(leaveId: string): Promise<void> {
       const year = new Date(leave.fromDate).getFullYear();
       const balRef = doc(db, BAL_COL, balanceId(leave.userId, year));
       const balSnap = await tx.get(balRef);
-      const currentBalances: LeaveBalanceMap = balSnap.exists()
-        ? ((balSnap.data() as LeaveBalance).balances ?? {})
-        : {};
+      const settingsSnap = await tx.get(doc(db, 'settings', 'general'));
+      const settings = settingsSnap.data();
+      const effective = resolveLeaveBalances(settings?.leaveTypes ?? DEFAULT_LEAVE_TYPES, balSnap.exists() ? balSnap.data() as LeaveBalance : null, settings?.leaveAllowanceBaselines);
+      const currentBalances = effective.balances;
       const newBalances: LeaveBalanceMap = {
         ...currentBalances,
         [leave.leaveType]: (currentBalances[leave.leaveType] ?? 0) + leave.days,
       };
       if (balSnap.exists()) {
-        tx.update(balRef, { balances: newBalances });
+        tx.update(balRef, { balances: newBalances, allowances: effective.allowances });
       } else {
-        tx.set(balRef, { userId: leave.userId, year, balances: newBalances });
+        tx.set(balRef, { userId: leave.userId, year, balances: newBalances, allowances: effective.allowances });
       }
       refundInfo = { leaveType: leave.leaveType, days: leave.days, userId: leave.userId };
     }
@@ -386,19 +445,22 @@ export async function adjustBalance(
 
   const balRef = doc(db, BAL_COL, balanceId(userId, year));
 
+  await ensureVerifiedBalance(userId, year);
+
   await runTransaction(db, async (tx) => {
     const snap = await tx.get(balRef);
-    const currentBalances: LeaveBalanceMap = snap.exists()
-      ? ((snap.data() as LeaveBalance).balances ?? {})
-      : {};
+    const settingsSnap = await tx.get(doc(db, 'settings', 'general'));
+    const settings = settingsSnap.data();
+    const effective = resolveLeaveBalances(settings?.leaveTypes ?? DEFAULT_LEAVE_TYPES, snap.exists() ? snap.data() as LeaveBalance : null, settings?.leaveAllowanceBaselines);
+    const currentBalances = effective.balances;
     const newBalances: LeaveBalanceMap = {
       ...currentBalances,
       [leaveType]: (currentBalances[leaveType] ?? 0) + delta,
     };
     if (snap.exists()) {
-      tx.update(balRef, { balances: newBalances });
+      tx.update(balRef, { balances: newBalances, allowances: effective.allowances });
     } else {
-      tx.set(balRef, { userId, year, balances: newBalances });
+      tx.set(balRef, { userId, year, balances: newBalances, allowances: effective.allowances });
     }
   });
 
@@ -424,6 +486,6 @@ export async function seedLeaveBalances(
   await runTransaction(db, async (tx) => {
     const snap = await tx.get(ref);
     if (snap.exists()) return; // don't overwrite existing balances
-    tx.set(ref, { userId, year, balances: defaults });
+    tx.set(ref, { userId, year, balances: defaults, allowances: defaults, calculationVersion: 2 });
   });
 }

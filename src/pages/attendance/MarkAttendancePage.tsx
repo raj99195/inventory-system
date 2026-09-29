@@ -18,7 +18,7 @@ import { usePermission } from '@/hooks/usePermission';
 import { useTodaysAttendance, checkIn, checkOut } from '@/hooks/useAttendance';
 import { useAttendanceSettings } from '@/hooks/useAttendanceSettings';
 import { useSchools } from '@/hooks/useSchools';
-import { fmtTime, minutesToHours } from '@/lib/attendance/datetime';
+import { isWorkingDay, todayKey, fmtTime, minutesToHours } from '@/lib/attendance/datetime';
 import { cn } from '@/lib/utils';
 import type { CapturedLocation } from '@/hooks/attendance/useGeolocation';
 import type { LocationType } from '@/types';
@@ -202,6 +202,10 @@ export default function MarkAttendancePage() {
       </div>
 
       {mode === 'in' && (
+        <>
+        {locType === 'office' && !isWorkingDay(todayKey(), settings.workingDays, settings.saturdayOffWeeks) && (
+          <p role="status" className="rounded-2xl bg-brand-orange-50 p-3 text-sm text-brand-choco">Today is an office day off. You can still record attendance if you are working; it will not be marked late.</p>
+        )}
         <LocationTypePicker
           value={locType}
           schoolId={schoolId}
@@ -210,6 +214,7 @@ export default function MarkAttendancePage() {
             setSchoolId(sId);
           }}
         />
+        </>
       )}
 
       <div className="card !p-5">

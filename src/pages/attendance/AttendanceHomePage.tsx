@@ -26,10 +26,10 @@ export default function AttendanceHomePage() {
   const { record: today, loading: loadingToday } = useTodaysAttendance(uid);
   const { records: monthly, loading: loadingMonthly } = useUserAttendance(uid, 60);
   const { leaves, loading: loadingLeaves } = useUserLeaves(uid, 50);
-  const { balance } = useLeaveBalance(uid);
+  const { balance, loading: balanceLoading, error: balanceError } = useLeaveBalance(uid);
   const { settings } = useAttendanceSettings();
 
-  const loading = loadingToday || loadingMonthly || loadingLeaves;
+  const loading = loadingToday || loadingMonthly || loadingLeaves || balanceLoading;
 
   const monthlyStats = useMemo(() => {
     const start = monthStart();
@@ -41,6 +41,7 @@ export default function AttendanceHomePage() {
 
   const pendingLeaves = leaves.filter((l) => l.status === 'pending').length;
 
+  if (balanceError) return <p role="alert">Unable to load leave policy. Check your connection and reload.</p>;
   if (loading || !userDoc) {
     return (
       <div className="flex items-center justify-center p-12">

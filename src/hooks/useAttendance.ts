@@ -23,7 +23,7 @@ import type {
 } from '@/types';
 import { logAudit } from '@/lib/audit';
 import { distanceMeters } from '@/lib/attendance/geocode';
-import { todayKey, workingMinutes as calcWorkingMinutes } from '@/lib/attendance/datetime';
+import { isWorkingDay, dateKey, todayKey, workingMinutes as calcWorkingMinutes } from '@/lib/attendance/datetime';
 
 const COL = 'attendance';
 
@@ -206,6 +206,7 @@ function computeIsLate(
   school: School | null,
   settings: AttendanceSettings
 ): boolean {
+  if (locationType === 'office' && !isWorkingDay(dateKey(now), settings.workingDays, settings.saturdayOffWeeks)) return false;
   const timeStr =
     locationType === 'school' && school
       ? school.inTime

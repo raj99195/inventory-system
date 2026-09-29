@@ -196,6 +196,10 @@ export default function DashboardLayout() {
 }
 
 function getPageTitle(path: string) {
+  if (path.startsWith('/attendance/admin/schools/')) {
+    const title = path.endsWith('/new') ? 'Add School' : path.endsWith('/edit') ? 'Edit School' : path.endsWith('/delete') ? 'Delete School' : 'Schools';
+    return { category: 'Attendance Admin', title };
+  }
   const map: Record<string, { category: string; title: string }> = {
     '/': { category: 'Overview', title: 'Dashboard' },
     '/products': { category: 'Inventory', title: 'Products' },

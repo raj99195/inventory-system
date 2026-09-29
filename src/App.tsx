@@ -26,6 +26,7 @@ import AttendanceAdminDashboardPage from '@/pages/attendance/admin/AttendanceAdm
 import AttendanceViewPage from '@/pages/attendance/admin/AttendanceViewPage';
 import LeaveApprovalsPage from '@/pages/attendance/admin/LeaveApprovalsPage';
 import SchoolsPage from '@/pages/attendance/admin/SchoolsPage';
+import SchoolActionPage from '@/pages/attendance/admin/SchoolActionPage';
 import AttendanceSettingsPage from '@/pages/attendance/admin/AttendanceSettingsPage';
 
 // ─── Request pages ────────────────────────────────────
@@ -83,6 +84,9 @@ export default function App() {
         <Route path="attendance/admin/view" element={<AttendanceViewPage />} />
         <Route path="attendance/admin/leaves" element={<LeaveApprovalsPage />} />
         <Route path="attendance/admin/schools" element={<SchoolsPage />} />
+        <Route path="attendance/admin/schools/new" element={<SchoolActionPage action="create" />} />
+        <Route path="attendance/admin/schools/:schoolId/edit" element={<SchoolActionPage action="edit" />} />
+        <Route path="attendance/admin/schools/:schoolId/delete" element={<SchoolActionPage action="delete" />} />
         <Route path="attendance/admin/settings" element={<AttendanceSettingsPage />} />
 
         {/* ─── Requests ─── */}

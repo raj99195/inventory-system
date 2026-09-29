@@ -1,6 +1,10 @@
 import { initializeApp } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
-import { initializeFirestore } from 'firebase/firestore';
+import {
+  initializeFirestore,
+  persistentLocalCache,
+  persistentMultipleTabManager,
+} from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
 
 const firebaseConfig = {
@@ -14,10 +18,25 @@ const firebaseConfig = {
 
 const app = initializeApp(firebaseConfig);
 
-// ignoreUndefinedProperties prevents "addDoc invalid data" errors
-// when optional fields (like sku, hsn) are undefined in parsed data.
+// ─────────────────────────────────────────────────────────────
+// Firestore configuration
+//
+// 1. `ignoreUndefinedProperties: true`
+//    - Prevents "addDoc invalid data" errors when optional fields
+//      (sku, hsn, etc.) are undefined in parsed data.
+//
+// 2. `persistentLocalCache` with `persistentMultipleTabManager`
+//    - Enables offline support:
+//      • Reads served from cache when offline
+//      • Writes queued locally and synced on reconnect
+//    - Required for attendance module (mark check-in when off-network)
+//    - Multi-tab safe (works across multiple browser tabs)
+// ─────────────────────────────────────────────────────────────
 export const db = initializeFirestore(app, {
   ignoreUndefinedProperties: true,
+  localCache: persistentLocalCache({
+    tabManager: persistentMultipleTabManager(),
+  }),
 });
 
 export const auth = getAuth(app);

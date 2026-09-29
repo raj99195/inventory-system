@@ -22,6 +22,15 @@ import {
   Plus,
   Shield,
   ShieldCheck,
+  Camera as CameraIcon,
+  Calendar as CalendarIcon,
+  School as SchoolIcon,
+  ClipboardList,
+  Building2,
+  Settings as SettingsIcon,
+  Home as HomeIcon,
+  Send,
+  Inbox,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { usePermission } from '@/hooks/usePermission';
@@ -43,85 +52,58 @@ interface NavItem {
   end?: boolean;
   viewPerm: string;
   createPerm?: string;
-  /** If present, sidebar + opens a global modal INSTEAD of navigating */
   quickAddType?: QuickAddType;
   children?: NavItem[];
 }
 
-const navItems: NavItem[] = [
+interface NavSection {
+  title: string;
+  items: NavItem[];
+}
+
+const NAV_SECTIONS: NavSection[] = [
   {
-    to: '/',
-    label: 'Dashboard',
-    icon: LayoutDashboard,
-    end: true,
-    viewPerm: 'dashboard.view',
-  },
-  {
-    to: '/products',
-    label: 'Products',
-    icon: Package,
-    viewPerm: 'products.view',
-    createPerm: 'products.create',
-    quickAddType: 'products',
-    children: [
-      {
-        to: '/kits',
-        label: 'Kits',
-        icon: Boxes,
-        viewPerm: 'kits.view',
-        createPerm: 'kits.create',
-        quickAddType: 'kits',
-      },
+    title: 'Main Menu',
+    items: [
+      { to: '/', label: 'Dashboard', icon: LayoutDashboard, end: true, viewPerm: 'dashboard.view' },
+      { to: '/products', label: 'Products', icon: Package, viewPerm: 'products.view', createPerm: 'products.create', quickAddType: 'products',
+        children: [{ to: '/kits', label: 'Kits', icon: Boxes, viewPerm: 'kits.view', createPerm: 'kits.create', quickAddType: 'kits' }] },
+      { to: '/stock', label: 'Stock Movement', icon: ArrowLeftRight, viewPerm: 'stock.view', createPerm: 'stock.stockIn', quickAddType: 'stock' },
+      { to: '/invoices', label: 'Invoices', icon: FileText, viewPerm: 'invoices.view', createPerm: 'invoices.upload', quickAddType: 'invoices' },
+      { to: '/quotations', label: 'Quotations', icon: Receipt, viewPerm: 'quotations.view', createPerm: 'quotations.create' },
+     
+      { to: '/assets', label: 'Assets', icon: Laptop, viewPerm: 'assets.view', createPerm: 'assets.create', quickAddType: 'assets' },
+      { to: '/assignments', label: 'Asset Assignments', icon: UserCheck, viewPerm: 'assignments.view', createPerm: 'assignments.assign', quickAddType: 'assignments' },
     ],
   },
   {
-    to: '/stock',
-    label: 'Stock Movement',
-    icon: ArrowLeftRight,
-    viewPerm: 'stock.view',
-    createPerm: 'stock.stockIn',
-    quickAddType: 'stock',
+    title: 'Requests',
+    items: [
+      { to: '/requests', label: 'My Requests', icon: Send, end: true, viewPerm: 'requests.viewOwn' },
+      { to: '/requests/new', label: 'New Request', icon: Plus, viewPerm: 'requests.createOwn' },
+      { to: '/requests/admin', label: 'Approvals', icon: Inbox, viewPerm: 'requests.viewAll' },
+    ],
   },
   {
-    to: '/invoices',
-    label: 'Invoices',
-    icon: FileText,
-    viewPerm: 'invoices.view',
-    createPerm: 'invoices.upload',
-    quickAddType: 'invoices',
+    title: 'Attendance',
+    items: [
+      { to: '/attendance', label: 'Home', icon: HomeIcon, end: true, viewPerm: 'attendance.viewOwn' },
+      { to: '/attendance/mark', label: 'Mark Attendance', icon: CameraIcon, viewPerm: 'attendance.markOwn' },
+      { to: '/attendance/my', label: 'My History', icon: CalendarIcon, viewPerm: 'attendance.viewOwn' },
+      { to: '/attendance/leaves', label: 'My Leaves', icon: ClipboardList, viewPerm: 'leaves.viewOwn' },
+      { to: '/attendance/apply-leave', label: 'Apply Leave', icon: Plus, viewPerm: 'leaves.applyOwn' },
+    ],
   },
   {
-    to: '/quotations',
-    label: 'Quotations',
-    icon: Receipt,
-    viewPerm: 'quotations.view',
-    createPerm: 'quotations.create',
+    title: 'Attendance Admin',
+    items: [
+      { to: '/attendance/admin', label: 'Team Dashboard', icon: Building2, end: true, viewPerm: 'attendance.viewAll' },
+      { to: '/attendance/admin/view', label: 'Team Attendance', icon: CalendarIcon, viewPerm: 'attendance.viewAll' },
+      { to: '/attendance/admin/leaves', label: 'Leave Approvals', icon: ClipboardList, viewPerm: 'leaves.viewAll' },
+      { to: '/attendance/admin/schools', label: 'Schools', icon: SchoolIcon, viewPerm: 'schools.view', createPerm: 'schools.create' },
+      { to: '/attendance/admin/settings', label: 'Settings', icon: SettingsIcon, viewPerm: 'settings.view' },
+    ],
   },
-  {
-    to: '/employees',
-    label: 'Employees',
-    icon: Users,
-    viewPerm: 'employees.view',
-    createPerm: 'employees.create',
-    quickAddType: 'employees',
-  },
-  {
-    to: '/assets',
-    label: 'Assets',
-    icon: Laptop,
-    viewPerm: 'assets.view',
-    createPerm: 'assets.create',
-    quickAddType: 'assets',
-  },
-  {
-    to: '/assignments',
-    label: 'Asset Assignments',
-    icon: UserCheck,
-    viewPerm: 'assignments.view',
-    createPerm: 'assignments.assign',
-    quickAddType: 'assignments',
-  },
-  // Users & Roles removed from sidebar — accessible via user dropdown (top-right) instead
 ];
 
 const QUICK_ACTIONS: {
@@ -136,10 +118,12 @@ const QUICK_ACTIONS: {
   { label: 'Stock Movement', icon: ArrowLeftRight, href: '/stock', perm: 'stock.stockIn', quickAddType: 'stock' },
   { label: 'Upload Invoice', icon: FileText, href: '/invoices', perm: 'invoices.upload', quickAddType: 'invoices' },
   { label: 'New Quotation', icon: Receipt, href: '/quotations', perm: 'quotations.create' },
-  { label: 'Add Employee', icon: Users, href: '/employees', perm: 'employees.create', quickAddType: 'employees' },
   { label: 'Register Asset', icon: Laptop, href: '/assets', perm: 'assets.create', quickAddType: 'assets' },
   { label: 'Assign Asset', icon: UserCheck, href: '/assignments', perm: 'assignments.assign', quickAddType: 'assignments' },
   { label: 'New User', icon: Shield, href: '/users', perm: 'users.create', quickAddType: 'users' },
+  { label: 'Request Item', icon: Send, href: '/requests/new', perm: 'requests.createOwn' },
+  { label: 'Mark Attendance', icon: CameraIcon, href: '/attendance/mark', perm: 'attendance.markOwn' },
+  { label: 'Apply Leave', icon: ClipboardList, href: '/attendance/apply-leave', perm: 'leaves.applyOwn' },
 ];
 
 export default function DashboardLayout() {
@@ -160,38 +144,20 @@ export default function DashboardLayout() {
     <QuickAddProvider>
       <div className="min-h-screen bg-brand-cream flex">
         <aside className="hidden lg:flex lg:flex-col w-72 bg-white border-r border-brand-choco/5 sticky top-0 h-screen">
-          <SidebarContent
-            onLogout={handleLogout}
-            userEmail={user?.email ?? ''}
-            userName={userDoc?.name ?? 'User'}
-            userRole={userDoc?.role ?? null}
-          />
+          <SidebarContent onLogout={handleLogout} userEmail={user?.email ?? ''} userName={userDoc?.name ?? 'User'} userRole={userDoc?.role ?? null} />
         </aside>
 
         <AnimatePresence>
           {sidebarOpen && (
             <>
-              <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
+              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
                 onClick={() => setSidebarOpen(false)}
-                className="fixed inset-0 bg-brand-choco/40 backdrop-blur-sm z-40 lg:hidden"
-              />
-              <motion.aside
-                initial={{ x: '-100%' }}
-                animate={{ x: 0 }}
-                exit={{ x: '-100%' }}
+                className="fixed inset-0 bg-brand-choco/40 backdrop-blur-sm z-40 lg:hidden" />
+              <motion.aside initial={{ x: '-100%' }} animate={{ x: 0 }} exit={{ x: '-100%' }}
                 transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-                className="fixed inset-y-0 left-0 w-72 bg-white z-50 lg:hidden flex flex-col"
-              >
-                <SidebarContent
-                  onLogout={handleLogout}
-                  userEmail={user?.email ?? ''}
-                  userName={userDoc?.name ?? 'User'}
-                  userRole={userDoc?.role ?? null}
-                  onNavigate={() => setSidebarOpen(false)}
-                />
+                className="fixed inset-y-0 left-0 w-72 bg-white z-50 lg:hidden flex flex-col">
+                <SidebarContent onLogout={handleLogout} userEmail={user?.email ?? ''} userName={userDoc?.name ?? 'User'} userRole={userDoc?.role ?? null}
+                  onNavigate={() => setSidebarOpen(false)} />
               </motion.aside>
             </>
           )}
@@ -200,10 +166,8 @@ export default function DashboardLayout() {
         <div className="flex-1 flex flex-col min-w-0">
           <header className="sticky top-0 z-30 bg-brand-cream/70 backdrop-blur-xl border-b border-brand-choco/5">
             <div className="flex items-center gap-3 px-4 lg:px-8 h-20">
-              <button
-                onClick={() => setSidebarOpen(true)}
-                className="lg:hidden w-11 h-11 rounded-2xl bg-white border border-brand-choco/8 flex items-center justify-center hover:bg-brand-cream-dark transition"
-              >
+              <button onClick={() => setSidebarOpen(true)}
+                className="lg:hidden w-11 h-11 rounded-2xl bg-white border border-brand-choco/8 flex items-center justify-center hover:bg-brand-cream-dark transition">
                 <Menu className="w-5 h-5" />
               </button>
 
@@ -211,21 +175,14 @@ export default function DashboardLayout() {
                 <span className="text-[10px] font-bold uppercase tracking-widest text-brand-choco-soft">
                   {pageTitle.category}
                 </span>
-                <h2 className="font-display font-bold text-lg leading-tight">
-                  {pageTitle.title}
-                </h2>
+                <h2 className="font-display font-bold text-lg leading-tight">{pageTitle.title}</h2>
               </div>
 
               <div className="flex-1" />
 
               <GlobalSearch />
               <QuickActionsMenu />
-              <UserMenu
-                userEmail={user?.email ?? ''}
-                userName={userDoc?.name ?? 'User'}
-                userRole={userDoc?.role ?? null}
-                onLogout={handleLogout}
-              />
+              <UserMenu userEmail={user?.email ?? ''} userName={userDoc?.name ?? 'User'} userRole={userDoc?.role ?? null} onLogout={handleLogout} />
             </div>
           </header>
 
@@ -251,35 +208,38 @@ function getPageTitle(path: string) {
     '/assignments': { category: 'Assets', title: 'Asset Assignments' },
     '/audit': { category: 'Compliance', title: 'Audit Log' },
     '/users': { category: 'Access Control', title: 'Users & Roles' },
+
+    '/requests': { category: 'Requests', title: 'My Requests' },
+    '/requests/new': { category: 'Requests', title: 'New Request' },
+    '/requests/admin': { category: 'Requests Admin', title: 'Approvals' },
+
+    '/attendance': { category: 'Attendance', title: 'Home' },
+    '/attendance/mark': { category: 'Attendance', title: 'Mark Attendance' },
+    '/attendance/my': { category: 'Attendance', title: 'My History' },
+    '/attendance/apply-leave': { category: 'Attendance', title: 'Apply Leave' },
+    '/attendance/leaves': { category: 'Attendance', title: 'My Leaves' },
+
+    '/attendance/admin': { category: 'Attendance Admin', title: 'Team Dashboard' },
+    '/attendance/admin/view': { category: 'Attendance Admin', title: 'Team Attendance' },
+    '/attendance/admin/leaves': { category: 'Attendance Admin', title: 'Leave Approvals' },
+    '/attendance/admin/schools': { category: 'Attendance Admin', title: 'Schools' },
+    '/attendance/admin/settings': { category: 'Attendance Admin', title: 'Settings' },
   };
   return map[path] ?? { category: 'Portal', title: 'STEMmantra' };
 }
 
-/** ------------- Sidebar Item ------------- */
-function SidebarNavItem({
-  item,
-  onNavigate,
-  indent,
-}: {
-  item: NavItem;
-  onNavigate?: () => void;
-  indent?: boolean;
-}) {
+function SidebarNavItem({ item, onNavigate, indent }: { item: NavItem; onNavigate?: () => void; indent?: boolean }) {
   const location = useLocation();
   const navigate = useNavigate();
   const { can } = usePermission();
   const { open: openQuickAdd, supports } = useQuickAdd();
-
   const isActive = location.pathname === item.to;
 
   const handleQuickAdd = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    if (item.quickAddType && supports(item.quickAddType)) {
-      openQuickAdd(item.quickAddType);
-    } else {
-      navigate(item.to, { state: { openCreate: true } });
-    }
+    if (item.quickAddType && supports(item.quickAddType)) openQuickAdd(item.quickAddType);
+    else navigate(item.to, { state: { openCreate: true } });
     onNavigate?.();
   };
 
@@ -287,46 +247,22 @@ function SidebarNavItem({
 
   return (
     <div className={cn('group relative', indent && 'ml-6')}>
-      <NavLink
-        to={item.to}
-        end={item.end}
-        onClick={onNavigate}
-        className={({ isActive: navActive }) =>
-          cn(
-            'flex items-center gap-3 px-3 py-2.5 rounded-2xl text-sm font-semibold transition-all pr-10',
-            navActive
-              ? 'bg-gradient-to-r from-brand-orange to-brand-orange-light text-white shadow-lg shadow-brand-orange/25'
-              : 'text-brand-choco-light hover:bg-brand-cream-dark'
-          )
-        }
-      >
+      <NavLink to={item.to} end={item.end} onClick={onNavigate}
+        className={({ isActive: navActive }) => cn(
+          'flex items-center gap-3 px-3 py-2.5 rounded-2xl text-sm font-semibold transition-all pr-10',
+          navActive ? 'bg-gradient-to-r from-brand-orange to-brand-orange-light text-white shadow-lg shadow-brand-orange/25' : 'text-brand-choco-light hover:bg-brand-cream-dark'
+        )}>
         {({ isActive: navActive }) => (
           <>
-            <item.icon
-              className={cn(
-                'w-5 h-5 transition shrink-0',
-                navActive
-                  ? 'text-white'
-                  : 'text-brand-choco-soft group-hover:text-brand-orange'
-              )}
-            />
+            <item.icon className={cn('w-5 h-5 transition shrink-0', navActive ? 'text-white' : 'text-brand-choco-soft group-hover:text-brand-orange')} />
             <span className="flex-1 truncate">{item.label}</span>
-            {navActive && (
-              <motion.div
-                layoutId="activeDot"
-                className="w-1.5 h-1.5 rounded-full bg-white shrink-0"
-              />
-            )}
+            {navActive && <motion.div layoutId="activeDot" className="w-1.5 h-1.5 rounded-full bg-white shrink-0" />}
           </>
         )}
       </NavLink>
-
       {showCreateButton && (
-        <button
-          onClick={handleQuickAdd}
-          title={`Add new ${item.label.toLowerCase()}`}
-          className="absolute right-2 top-1/2 -translate-y-1/2 w-7 h-7 rounded-lg bg-white shadow-md border border-brand-choco/8 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all hover:bg-brand-orange hover:text-white hover:border-brand-orange hover:scale-105 z-10"
-        >
+        <button onClick={handleQuickAdd} title={`Add new ${item.label.toLowerCase()}`}
+          className="absolute right-2 top-1/2 -translate-y-1/2 w-7 h-7 rounded-lg bg-white shadow-md border border-brand-choco/8 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all hover:bg-brand-orange hover:text-white hover:border-brand-orange hover:scale-105 z-10">
           <Plus className="w-3.5 h-3.5" />
         </button>
       )}
@@ -334,7 +270,6 @@ function SidebarNavItem({
   );
 }
 
-/** ------------- Global Search ------------- */
 function GlobalSearch() {
   const [query, setQuery] = useState('');
   const [open, setOpen] = useState(false);
@@ -346,8 +281,7 @@ function GlobalSearch() {
 
   useEffect(() => {
     const onClickOutside = (e: MouseEvent) => {
-      if (wrapRef.current && !wrapRef.current.contains(e.target as Node))
-        setOpen(false);
+      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) setOpen(false);
     };
     document.addEventListener('mousedown', onClickOutside);
     return () => document.removeEventListener('mousedown', onClickOutside);
@@ -355,56 +289,31 @@ function GlobalSearch() {
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
-        e.preventDefault();
-        inputRef.current?.focus();
-        setOpen(true);
-      }
+      if ((e.ctrlKey || e.metaKey) && e.key === 'k') { e.preventDefault(); inputRef.current?.focus(); setOpen(true); }
     };
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
   }, []);
 
-  const goto = (r: SearchResult) => {
-    navigate(r.path);
-    setOpen(false);
-    setQuery('');
-  };
+  const goto = (r: SearchResult) => { navigate(r.path); setOpen(false); setQuery(''); };
 
   const handleKey = (e: React.KeyboardEvent) => {
     if (!open || results.length === 0) return;
-    if (e.key === 'ArrowDown') {
-      e.preventDefault();
-      setActiveIdx((i) => Math.min(i + 1, results.length - 1));
-    } else if (e.key === 'ArrowUp') {
-      e.preventDefault();
-      setActiveIdx((i) => Math.max(i - 1, 0));
-    } else if (e.key === 'Enter') {
-      e.preventDefault();
-      goto(results[activeIdx]);
-    } else if (e.key === 'Escape') {
-      setOpen(false);
-    }
+    if (e.key === 'ArrowDown') { e.preventDefault(); setActiveIdx((i) => Math.min(i + 1, results.length - 1)); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); setActiveIdx((i) => Math.max(i - 1, 0)); }
+    else if (e.key === 'Enter') { e.preventDefault(); goto(results[activeIdx]); }
+    else if (e.key === 'Escape') setOpen(false);
   };
 
   return (
     <div ref={wrapRef} className="flex-1 max-w-md relative">
       <div className="relative group">
         <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-brand-choco-soft pointer-events-none group-focus-within:text-brand-orange transition" />
-        <input
-          ref={inputRef}
-          type="text"
-          value={query}
-          onChange={(e) => {
-            setQuery(e.target.value);
-            setOpen(true);
-            setActiveIdx(0);
-          }}
-          onFocus={() => setOpen(true)}
-          onKeyDown={handleKey}
+        <input ref={inputRef} type="text" value={query}
+          onChange={(e) => { setQuery(e.target.value); setOpen(true); setActiveIdx(0); }}
+          onFocus={() => setOpen(true)} onKeyDown={handleKey}
           placeholder="Search anything..."
-          className="w-full pl-11 pr-20 py-3 rounded-2xl bg-white border-2 border-brand-choco/8 focus:border-brand-orange focus:ring-4 focus:ring-brand-orange/10 outline-none text-sm font-medium transition shadow-sm hover:shadow"
-        />
+          className="w-full pl-11 pr-20 py-3 rounded-2xl bg-white border-2 border-brand-choco/8 focus:border-brand-orange focus:ring-4 focus:ring-brand-orange/10 outline-none text-sm font-medium transition shadow-sm hover:shadow" />
         <kbd className="absolute right-3 top-1/2 -translate-y-1/2 hidden sm:flex items-center gap-1 px-2 py-1 rounded-lg bg-brand-cream-dark text-[10px] font-mono font-bold text-brand-choco-soft border border-brand-choco/10">
           <Command className="w-2.5 h-2.5" /> K
         </kbd>
@@ -412,71 +321,37 @@ function GlobalSearch() {
 
       <AnimatePresence>
         {open && query.length >= 2 && (
-          <motion.div
-            initial={{ opacity: 0, y: -8 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -8 }}
-            className="absolute top-full mt-2 left-0 right-0 bg-white rounded-3xl shadow-2xl border border-brand-choco/8 overflow-hidden z-50"
-          >
+          <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }}
+            className="absolute top-full mt-2 left-0 right-0 bg-white rounded-3xl shadow-2xl border border-brand-choco/8 overflow-hidden z-50">
             {results.length === 0 ? (
               <div className="p-8 text-center">
                 <Search className="w-10 h-10 text-brand-choco-soft/40 mx-auto mb-3" />
-                <p className="text-sm text-brand-choco-soft">
-                  No matches for "<span className="font-semibold">{query}</span>"
-                </p>
+                <p className="text-sm text-brand-choco-soft">No matches for "<span className="font-semibold">{query}</span>"</p>
               </div>
             ) : (
               <div className="max-h-96 overflow-y-auto py-2">
                 {results.map((r, i) => (
-                  <button
-                    key={`${r.type}-${r.id}`}
-                    onClick={() => goto(r)}
-                    onMouseEnter={() => setActiveIdx(i)}
-                    className={cn(
-                      'w-full flex items-center gap-3 px-4 py-2.5 text-left transition',
-                      activeIdx === i && 'bg-brand-cream-dark'
-                    )}
-                  >
-                    <div
-                      className={cn(
-                        'w-10 h-10 rounded-xl flex items-center justify-center shrink-0',
-                        r.type === 'product' && 'bg-pastel-blue',
-                        r.type === 'asset' && 'bg-pastel-peach',
-                        r.type === 'employee' && 'bg-pastel-green',
-                        r.type === 'invoice' && 'bg-pastel-pink'
-                      )}
-                    >
+                  <button key={`${r.type}-${r.id}`} onClick={() => goto(r)} onMouseEnter={() => setActiveIdx(i)}
+                    className={cn('w-full flex items-center gap-3 px-4 py-2.5 text-left transition', activeIdx === i && 'bg-brand-cream-dark')}>
+                    <div className={cn('w-10 h-10 rounded-xl flex items-center justify-center shrink-0',
+                      r.type === 'product' && 'bg-pastel-blue',
+                      r.type === 'asset' && 'bg-pastel-peach',
+                      r.type === 'employee' && 'bg-pastel-green',
+                      r.type === 'invoice' && 'bg-pastel-pink')}>
                       {r.type === 'product' && <Package className="w-4 h-4" />}
                       {r.type === 'asset' && <Laptop className="w-4 h-4" />}
                       {r.type === 'employee' && <Users className="w-4 h-4" />}
                       {r.type === 'invoice' && <FileText className="w-4 h-4" />}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="font-semibold text-sm truncate">
-                        {r.title}
-                      </p>
-                      <p className="text-xs text-brand-choco-soft truncate">
-                        {r.subtitle}
-                      </p>
+                      <p className="font-semibold text-sm truncate">{r.title}</p>
+                      <p className="text-xs text-brand-choco-soft truncate">{r.subtitle}</p>
                     </div>
-                    <span className="text-[10px] font-bold uppercase text-brand-choco-soft tracking-wider">
-                      {r.badge}
-                    </span>
+                    <span className="text-[10px] font-bold uppercase text-brand-choco-soft tracking-wider">{r.badge}</span>
                   </button>
                 ))}
               </div>
             )}
-            <div className="border-t border-brand-choco/8 px-4 py-2.5 flex items-center gap-3 text-[10px] text-brand-choco-soft bg-brand-cream-dark/40">
-              <span className="flex items-center gap-1">
-                <kbd className="px-1.5 py-0.5 rounded bg-white border border-brand-choco/10 font-mono">↑↓</kbd> navigate
-              </span>
-              <span className="flex items-center gap-1">
-                <kbd className="px-1.5 py-0.5 rounded bg-white border border-brand-choco/10 font-mono">↵</kbd> open
-              </span>
-              <span className="flex items-center gap-1">
-                <kbd className="px-1.5 py-0.5 rounded bg-white border border-brand-choco/10 font-mono">esc</kbd> close
-              </span>
-            </div>
           </motion.div>
         )}
       </AnimatePresence>
@@ -484,7 +359,6 @@ function GlobalSearch() {
   );
 }
 
-/** ------------- Quick Actions ------------- */
 function QuickActionsMenu() {
   const [open, setOpen] = useState(false);
   const navigate = useNavigate();
@@ -494,59 +368,39 @@ function QuickActionsMenu() {
 
   useEffect(() => {
     const onClickOutside = (e: MouseEvent) => {
-      if (wrapRef.current && !wrapRef.current.contains(e.target as Node))
-        setOpen(false);
+      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) setOpen(false);
     };
     document.addEventListener('mousedown', onClickOutside);
     return () => document.removeEventListener('mousedown', onClickOutside);
   }, []);
 
   const allowedActions = QUICK_ACTIONS.filter((a) => can(a.perm));
-
   if (allowedActions.length === 0) return null;
 
   const handleAction = (action: typeof QUICK_ACTIONS[number]) => {
-    if (action.quickAddType && supports(action.quickAddType)) {
-      openQuickAdd(action.quickAddType);
-    } else {
-      navigate(action.href, { state: { openCreate: true } });
-    }
+    if (action.quickAddType && supports(action.quickAddType)) openQuickAdd(action.quickAddType);
+    else navigate(action.href, { state: { openCreate: true } });
     setOpen(false);
   };
 
   return (
     <div ref={wrapRef} className="relative">
-      <button
-        onClick={() => setOpen(!open)}
-        className={cn(
-          'hidden sm:flex items-center gap-2 h-12 px-4 rounded-2xl font-semibold text-sm transition-all',
-          'bg-gradient-to-r from-brand-orange to-brand-orange-light text-white shadow-lg shadow-brand-orange/25 hover:shadow-xl hover:shadow-brand-orange/30'
-        )}
-      >
+      <button onClick={() => setOpen(!open)}
+        className={cn('hidden sm:flex items-center gap-2 h-12 px-4 rounded-2xl font-semibold text-sm transition-all',
+          'bg-gradient-to-r from-brand-orange to-brand-orange-light text-white shadow-lg shadow-brand-orange/25 hover:shadow-xl hover:shadow-brand-orange/30')}>
         <Plus className="w-4 h-4" />
         <span className="hidden md:inline">Quick Add</span>
-        <ChevronDown
-          className={cn('w-4 h-4 transition', open && 'rotate-180')}
-        />
+        <ChevronDown className={cn('w-4 h-4 transition', open && 'rotate-180')} />
       </button>
 
       <AnimatePresence>
         {open && (
-          <motion.div
-            initial={{ opacity: 0, y: -8, scale: 0.95 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: -8, scale: 0.95 }}
-            className="absolute right-0 top-full mt-2 w-56 bg-white rounded-2xl shadow-2xl border border-brand-choco/8 py-2 z-50"
-          >
-            <p className="text-[10px] font-bold uppercase tracking-widest text-brand-choco-soft px-4 py-2">
-              Quick Actions
-            </p>
+          <motion.div initial={{ opacity: 0, y: -8, scale: 0.95 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: -8, scale: 0.95 }}
+            className="absolute right-0 top-full mt-2 w-60 bg-white rounded-2xl shadow-2xl border border-brand-choco/8 py-2 z-50 max-h-[70vh] overflow-y-auto">
+            <p className="text-[10px] font-bold uppercase tracking-widest text-brand-choco-soft px-4 py-2">Quick Actions</p>
             {allowedActions.map((action) => (
-              <button
-                key={action.href}
-                onClick={() => handleAction(action)}
-                className="w-full flex items-center gap-3 px-4 py-2.5 text-sm font-semibold hover:bg-brand-cream-dark transition text-left"
-              >
+              <button key={action.href + action.label} onClick={() => handleAction(action)}
+                className="w-full flex items-center gap-3 px-4 py-2.5 text-sm font-semibold hover:bg-brand-cream-dark transition text-left">
                 <div className="w-8 h-8 rounded-xl bg-brand-orange-100 flex items-center justify-center">
                   <action.icon className="w-4 h-4 text-brand-orange" />
                 </div>
@@ -560,17 +414,8 @@ function QuickActionsMenu() {
   );
 }
 
-/** ------------- User Menu (with Audit Log link) ------------- */
-function UserMenu({
-  userEmail,
-  userName,
-  userRole,
-  onLogout,
-}: {
-  userEmail: string;
-  userName: string;
-  userRole: string | null;
-  onLogout: () => void;
+function UserMenu({ userEmail, userName, userRole, onLogout }: {
+  userEmail: string; userName: string; userRole: string | null; onLogout: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const navigate = useNavigate();
@@ -579,65 +424,39 @@ function UserMenu({
 
   useEffect(() => {
     const onClickOutside = (e: MouseEvent) => {
-      if (wrapRef.current && !wrapRef.current.contains(e.target as Node))
-        setOpen(false);
+      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) setOpen(false);
     };
     document.addEventListener('mousedown', onClickOutside);
     return () => document.removeEventListener('mousedown', onClickOutside);
   }, []);
 
   const initial = (userName?.[0] ?? userEmail?.[0] ?? '?').toUpperCase();
-  const roleLabel = userRole
-    ? ROLE_LABELS[userRole as keyof typeof ROLE_LABELS]
-    : 'Signed in';
+  const roleLabel = userRole ? ROLE_LABELS[userRole as keyof typeof ROLE_LABELS] : 'Signed in';
 
   return (
     <div ref={wrapRef} className="relative">
-      <button
-        onClick={() => setOpen(!open)}
-        className="flex items-center gap-2 h-12 pl-1 pr-3 rounded-2xl bg-white border-2 border-brand-choco/8 hover:border-brand-orange/40 transition shadow-sm"
-      >
-        <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-brand-orange-light to-brand-orange flex items-center justify-center text-white font-bold text-sm shadow-md">
-          {initial}
-        </div>
+      <button onClick={() => setOpen(!open)}
+        className="flex items-center gap-2 h-12 pl-1 pr-3 rounded-2xl bg-white border-2 border-brand-choco/8 hover:border-brand-orange/40 transition shadow-sm">
+        <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-brand-orange-light to-brand-orange flex items-center justify-center text-white font-bold text-sm shadow-md">{initial}</div>
         <div className="hidden md:block text-left">
           <p className="text-sm font-bold leading-tight">{userName}</p>
-          <p className="text-[10px] text-brand-choco-soft leading-tight">
-            {roleLabel}
-          </p>
+          <p className="text-[10px] text-brand-choco-soft leading-tight">{roleLabel}</p>
         </div>
-        <ChevronDown
-          className={cn(
-            'w-3.5 h-3.5 text-brand-choco-soft transition hidden md:block',
-            open && 'rotate-180'
-          )}
-        />
+        <ChevronDown className={cn('w-3.5 h-3.5 text-brand-choco-soft transition hidden md:block', open && 'rotate-180')} />
       </button>
 
       <AnimatePresence>
         {open && (
-          <motion.div
-            initial={{ opacity: 0, y: -8, scale: 0.95 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: -8, scale: 0.95 }}
-            className="absolute right-0 top-full mt-2 w-72 bg-white rounded-2xl shadow-2xl border border-brand-choco/8 overflow-hidden z-50"
-          >
+          <motion.div initial={{ opacity: 0, y: -8, scale: 0.95 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: -8, scale: 0.95 }}
+            className="absolute right-0 top-full mt-2 w-72 bg-white rounded-2xl shadow-2xl border border-brand-choco/8 overflow-hidden z-50">
             <div className="p-4 bg-gradient-to-br from-brand-orange-100 to-brand-cream-deep">
               <div className="flex items-center gap-3">
-                <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-brand-orange-light to-brand-orange flex items-center justify-center text-white font-bold text-lg shadow-md">
-                  {initial}
-                </div>
+                <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-brand-orange-light to-brand-orange flex items-center justify-center text-white font-bold text-lg shadow-md">{initial}</div>
                 <div className="min-w-0 flex-1">
                   <p className="text-sm font-bold truncate">{userName}</p>
-                  <p className="text-xs text-brand-choco-soft truncate">
-                    {userEmail}
-                  </p>
+                  <p className="text-xs text-brand-choco-soft truncate">{userEmail}</p>
                   <span className="inline-flex items-center gap-1 mt-1 px-2 py-0.5 rounded-full bg-white/70 text-[10px] font-bold text-brand-choco">
-                    {userRole === 'super_admin' ? (
-                      <ShieldCheck className="w-2.5 h-2.5" />
-                    ) : (
-                      <Shield className="w-2.5 h-2.5" />
-                    )}
+                    {userRole === 'super_admin' ? <ShieldCheck className="w-2.5 h-2.5" /> : <Shield className="w-2.5 h-2.5" />}
                     {roleLabel}
                   </span>
                 </div>
@@ -647,56 +466,30 @@ function UserMenu({
                 Online · Firebase authenticated
               </div>
             </div>
-
             <div className="p-2">
               {can('audit.view') && (
-                <button
-                  onClick={() => {
-                    navigate('/audit');
-                    setOpen(false);
-                  }}
-                  className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold text-brand-choco hover:bg-brand-cream-dark transition text-left"
-                >
-                  <div className="w-8 h-8 rounded-xl bg-brand-orange-100 flex items-center justify-center">
-                    <History className="w-4 h-4 text-brand-orange" />
-                  </div>
+                <button onClick={() => { navigate('/audit'); setOpen(false); }}
+                  className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold text-brand-choco hover:bg-brand-cream-dark transition text-left">
+                  <div className="w-8 h-8 rounded-xl bg-brand-orange-100 flex items-center justify-center"><History className="w-4 h-4 text-brand-orange" /></div>
                   <div className="flex-1">
                     <p className="text-sm font-bold leading-tight">Audit Log</p>
-                    <p className="text-[10px] text-brand-choco-soft leading-tight mt-0.5">
-                      View all system activity
-                    </p>
+                    <p className="text-[10px] text-brand-choco-soft leading-tight mt-0.5">View all system activity</p>
                   </div>
                 </button>
               )}
-
               {can('users.view') && (
-                <button
-                  onClick={() => {
-                    navigate('/users');
-                    setOpen(false);
-                  }}
-                  className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold text-brand-choco hover:bg-brand-cream-dark transition text-left"
-                >
-                  <div className="w-8 h-8 rounded-xl bg-brand-orange-100 flex items-center justify-center">
-                    <Shield className="w-4 h-4 text-brand-orange" />
-                  </div>
+                <button onClick={() => { navigate('/users'); setOpen(false); }}
+                  className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold text-brand-choco hover:bg-brand-cream-dark transition text-left">
+                  <div className="w-8 h-8 rounded-xl bg-brand-orange-100 flex items-center justify-center"><Shield className="w-4 h-4 text-brand-orange" /></div>
                   <div className="flex-1">
-                    <p className="text-sm font-bold leading-tight">
-                      Users & Roles
-                    </p>
-                    <p className="text-[10px] text-brand-choco-soft leading-tight mt-0.5">
-                      Manage access
-                    </p>
+                    <p className="text-sm font-bold leading-tight">Users & Roles</p>
+                    <p className="text-[10px] text-brand-choco-soft leading-tight mt-0.5">Manage access</p>
                   </div>
                 </button>
               )}
-
               <div className="h-px bg-brand-choco/8 my-1" />
-
-              <button
-                onClick={onLogout}
-                className="w-full flex items-center gap-2 px-3 py-2.5 rounded-xl text-sm font-semibold text-red-600 hover:bg-red-50 transition"
-              >
+              <button onClick={onLogout}
+                className="w-full flex items-center gap-2 px-3 py-2.5 rounded-xl text-sm font-semibold text-red-600 hover:bg-red-50 transition">
                 <LogOut className="w-4 h-4" />
                 Sign Out
               </button>
@@ -708,113 +501,78 @@ function UserMenu({
   );
 }
 
-/** ------------- Sidebar ------------- */
-function SidebarContent({
-  onLogout,
-  userEmail,
-  userName,
-  userRole,
-  onNavigate,
-}: {
-  onLogout: () => void;
-  userEmail: string;
-  userName: string;
-  userRole: string | null;
-  onNavigate?: () => void;
+function SidebarContent({ onLogout, userEmail, userName, userRole, onNavigate }: {
+  onLogout: () => void; userEmail: string; userName: string; userRole: string | null; onNavigate?: () => void;
 }) {
   const { can } = usePermission();
 
-  const visibleItems = navItems
-    .filter((item) => can(item.viewPerm))
-    .map((item) => ({
-      ...item,
-      children: item.children?.filter((c) => can(c.viewPerm)) ?? [],
-    }));
+  const visibleSections = NAV_SECTIONS.map((section) => {
+    const items = section.items
+      .filter((item) => can(item.viewPerm))
+      .map((item) => ({ ...item, children: item.children?.filter((c) => can(c.viewPerm)) ?? [] }));
+    return { ...section, items };
+  }).filter((s) => s.items.length > 0);
 
   const initial = (userName?.[0] ?? userEmail?.[0] ?? '?').toUpperCase();
-  const roleLabel = userRole
-    ? ROLE_LABELS[userRole as keyof typeof ROLE_LABELS]
-    : '';
+  const roleLabel = userRole ? ROLE_LABELS[userRole as keyof typeof ROLE_LABELS] : '';
 
   return (
     <>
       <div className="p-6 pb-4 flex items-center justify-between">
         <Logo variant="wide" size="lg" />
         {onNavigate && (
-          <button
-            onClick={onNavigate}
-            className="lg:hidden w-8 h-8 rounded-lg hover:bg-brand-cream-dark flex items-center justify-center"
-          >
+          <button onClick={onNavigate} className="lg:hidden w-8 h-8 rounded-lg hover:bg-brand-cream-dark flex items-center justify-center">
             <X className="w-4 h-4" />
           </button>
         )}
       </div>
-
       <div className="h-px bg-gradient-to-r from-transparent via-brand-choco/8 to-transparent mx-6" />
 
       <nav className="flex-1 px-3 py-4 overflow-y-auto">
-        <div className="mb-3 px-3">
-          <p className="text-[10px] font-bold uppercase tracking-widest text-brand-choco-soft">
-            Main Menu
-          </p>
-        </div>
-        <div className="space-y-1">
-          {visibleItems.map((item, idx) => (
-            <motion.div
-              key={item.to}
-              initial={{ opacity: 0, x: -10 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ delay: idx * 0.03 }}
-              className="space-y-1"
-            >
-              <SidebarNavItem item={item} onNavigate={onNavigate} />
-              {item.children?.map((child) => (
-                <SidebarNavItem
-                  key={child.to}
-                  item={child}
-                  onNavigate={onNavigate}
-                  indent
-                />
+        {visibleSections.map((section, sectionIdx) => (
+          <div key={section.title} className={cn(sectionIdx > 0 && 'mt-6')}>
+            <div className="mb-2 px-3">
+              <p className="text-[10px] font-bold uppercase tracking-widest text-brand-choco-soft">{section.title}</p>
+            </div>
+            <div className="space-y-1">
+              {section.items.map((item, idx) => (
+                <motion.div key={item.to} initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: (sectionIdx * 3 + idx) * 0.02 }} className="space-y-1">
+                  <SidebarNavItem item={item} onNavigate={onNavigate} />
+                  {item.children?.map((child) => (
+                    <SidebarNavItem key={child.to} item={child} onNavigate={onNavigate} indent />
+                  ))}
+                </motion.div>
               ))}
-            </motion.div>
-          ))}
-        </div>
+            </div>
+          </div>
+        ))}
       </nav>
 
       <div className="p-4 mt-4">
         <div className="p-4 rounded-2xl bg-gradient-to-br from-brand-cream-dark to-brand-cream-deep border border-brand-orange/10">
           <div className="flex items-center gap-3 mb-3">
-            <div className="w-10 h-10 rounded-full bg-white flex items-center justify-center text-brand-orange font-bold">
-              {initial}
-            </div>
+            <div className="w-10 h-10 rounded-full bg-white flex items-center justify-center text-brand-orange font-bold">{initial}</div>
             <div className="min-w-0 flex-1">
               <p className="text-sm font-bold truncate">{userName}</p>
-              <p className="text-xs text-brand-choco-soft truncate">
-                {userEmail}
-              </p>
+              <p className="text-xs text-brand-choco-soft truncate">{userEmail}</p>
               {roleLabel && (
                 <span className="inline-flex items-center gap-1 mt-1 px-2 py-0.5 rounded-full bg-white text-[9px] font-bold text-brand-choco">
-                  {userRole === 'super_admin' ? (
-                    <ShieldCheck className="w-2.5 h-2.5" />
-                  ) : (
-                    <Shield className="w-2.5 h-2.5" />
-                  )}
+                  {userRole === 'super_admin' ? <ShieldCheck className="w-2.5 h-2.5" /> : <Shield className="w-2.5 h-2.5" />}
                   {roleLabel}
                 </span>
               )}
             </div>
           </div>
-          <button
-            onClick={onLogout}
-            className="w-full flex items-center justify-center gap-2 py-2 rounded-xl bg-white hover:bg-brand-orange hover:text-white transition-all text-sm font-semibold"
-          >
+          <button onClick={onLogout}
+            className="w-full flex items-center justify-center gap-2 py-2 rounded-xl bg-white hover:bg-brand-orange hover:text-white transition-all text-sm font-semibold">
             <LogOut className="w-4 h-4" />
             Sign Out
           </button>
         </div>
         <div className="mt-3 flex items-center justify-center gap-1.5 text-[10px] text-brand-choco-soft">
           <Sparkles className="w-3 h-3" />
-          v1.0 · STEMmantra
+          v2.0 · STEMmantra
         </div>
       </div>
     </>

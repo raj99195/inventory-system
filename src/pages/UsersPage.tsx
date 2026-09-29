@@ -14,6 +14,8 @@ import {
   UserCheck,
   ShieldCheck,
   Mail,
+  Building,
+  School as SchoolIcon,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import Modal from '@/components/ui/Modal';
@@ -23,7 +25,7 @@ import UserForm from '@/components/users/UserForm';
 import { useUsers, deleteUser, toggleUserActive } from '@/hooks/useUsers';
 import { usePermission } from '@/hooks/usePermission';
 import { useAuth } from '@/contexts/AuthContext';
-import { ROLE_LABELS } from '@/lib/permissions';
+import { ROLE_LABELS, canManageUser, myLevel } from '@/lib/permissions';
 import type { AppUser, AppRole } from '@/types';
 import { cn, formatDate } from '@/lib/utils';
 
@@ -32,7 +34,8 @@ type RoleFilter = 'all' | AppRole;
 export default function UsersPage() {
   const { users, loading } = useUsers();
   const { can, isSuperAdmin } = usePermission();
-  const { user: currentUser } = useAuth();
+  const { user: currentUser, userDoc } = useAuth();
+  const myLvl = myLevel(userDoc);
   const location = useLocation();
   const navigate = useNavigate();
 
@@ -44,7 +47,6 @@ export default function UsersPage() {
   const [deleteLoading, setDeleteLoading] = useState(false);
   const [menuOpen, setMenuOpen] = useState<string | null>(null);
 
-  // Auto-open create modal via location.state
   useEffect(() => {
     const state = location.state as { openCreate?: boolean } | null;
     if (state?.openCreate && can('users.create')) {
@@ -54,7 +56,6 @@ export default function UsersPage() {
     }
   }, [location.state, location.pathname, navigate, can]);
 
-  // Redirect if user has no view permission
   if (!can('users.view')) {
     return <Navigate to="/" replace />;
   }
@@ -65,7 +66,8 @@ export default function UsersPage() {
       const matchSearch =
         !q ||
         u.name.toLowerCase().includes(q) ||
-        u.email.toLowerCase().includes(q);
+        u.email.toLowerCase().includes(q) ||
+        (u.department ?? '').toLowerCase().includes(q);
       const matchRole = roleFilter === 'all' ? true : u.role === roleFilter;
       return matchSearch && matchRole;
     });
@@ -81,6 +83,10 @@ export default function UsersPage() {
   }, [users]);
 
   const handleEdit = (u: AppUser) => {
+    // Anti-escalation: cannot edit peer/higher, but can edit self
+    if (u.uid !== currentUser?.uid && !canManageUser(myLvl, u)) {
+      return toast.error("You can't edit a user at your level or above");
+    }
     setSelected(u);
     setFormOpen(true);
     setMenuOpen(null);
@@ -90,6 +96,10 @@ export default function UsersPage() {
     if (!deleting) return;
     if (deleting.uid === currentUser?.uid) {
       toast.error('You cannot delete yourself');
+      return;
+    }
+    if (!canManageUser(myLvl, deleting)) {
+      toast.error("You can't delete a user at your level or above");
       return;
     }
     setDeleteLoading(true);
@@ -110,6 +120,10 @@ export default function UsersPage() {
       toast.error('You cannot deactivate yourself');
       return;
     }
+    if (!canManageUser(myLvl, u)) {
+      toast.error("You can't modify a user at your level or above");
+      return;
+    }
     try {
       await toggleUserActive(u);
       toast.success(`User ${u.active ? 'deactivated' : 'activated'}`);
@@ -119,9 +133,19 @@ export default function UsersPage() {
     }
   };
 
+  const roleFilterOptions: [RoleFilter, string][] = [
+    ['all', 'All'],
+    ['super_admin', 'Super Admin'],
+    ['admin', 'Admin'],
+    ['hr', 'HR'],
+    ['manager', 'Manager'],
+    ['accountant', 'Accountant'],
+    ['employee', 'Employee'],
+    ['custom', 'Custom'],
+  ];
+
   return (
     <div className="space-y-6">
-      {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-brand-orange-50 text-brand-orange-dark text-xs font-bold uppercase tracking-wider mb-3">
@@ -149,35 +173,13 @@ export default function UsersPage() {
         )}
       </div>
 
-      {/* Stat chips */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <StatChip
-          label="Total Users"
-          value={stats.total}
-          icon={UsersIcon}
-          color="pastel-blue"
-        />
-        <StatChip
-          label="Active"
-          value={stats.active}
-          icon={UserCheck}
-          color="pastel-green"
-        />
-        <StatChip
-          label="Super Admins"
-          value={stats.superAdmins}
-          icon={ShieldCheck}
-          color="pastel-peach"
-        />
-        <StatChip
-          label="Admins"
-          value={stats.admins}
-          icon={Shield}
-          color="pastel-pink"
-        />
+        <StatChip label="Total Users" value={stats.total} icon={UsersIcon} color="pastel-blue" />
+        <StatChip label="Active" value={stats.active} icon={UserCheck} color="pastel-green" />
+        <StatChip label="Super Admins" value={stats.superAdmins} icon={ShieldCheck} color="pastel-peach" />
+        <StatChip label="Admins" value={stats.admins} icon={Shield} color="pastel-pink" />
       </div>
 
-      {/* Toolbar */}
       <div className="card !p-4 flex flex-col lg:flex-row lg:items-center gap-3">
         <div className="relative flex-1">
           <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-brand-choco-soft" />
@@ -185,21 +187,13 @@ export default function UsersPage() {
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search by name or email..."
+            placeholder="Search by name, email or department..."
             className="input-field pl-11 !py-2.5"
           />
         </div>
 
         <div className="flex items-center gap-1 p-1 rounded-full bg-brand-cream-dark overflow-x-auto">
-          {(
-            [
-              ['all', 'All'],
-              ['super_admin', 'Super Admin'],
-              ['admin', 'Admin'],
-              ['accountant', 'Accountant'],
-              ['custom', 'Custom'],
-            ] as [RoleFilter, string][]
-          ).map(([val, label]) => (
+          {roleFilterOptions.map(([val, label]) => (
             <button
               key={val}
               onClick={() => setRoleFilter(val)}
@@ -216,11 +210,8 @@ export default function UsersPage() {
         </div>
       </div>
 
-      {/* Content */}
       {loading ? (
-        <div className="card !p-8 text-center text-brand-choco-soft">
-          Loading users...
-        </div>
+        <div className="card !p-8 text-center text-brand-choco-soft">Loading users...</div>
       ) : filtered.length === 0 ? (
         <EmptyState
           icon={UsersIcon}
@@ -246,37 +237,29 @@ export default function UsersPage() {
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           <AnimatePresence>
-            {filtered.map((u) => (
-              <UserCard
-                key={u.uid}
-                user={u}
-                isSelf={u.uid === currentUser?.uid}
-                canEdit={
-                  can('users.edit') ||
-                  (isSuperAdmin && u.role !== 'super_admin') ||
-                  isSuperAdmin
-                }
-                canDelete={
-                  can('users.delete') &&
-                  u.uid !== currentUser?.uid &&
-                  isSuperAdmin
-                }
-                canToggle={
-                  can('users.edit') &&
-                  u.uid !== currentUser?.uid
-                }
-                onEdit={handleEdit}
-                onDelete={setDeleting}
-                onToggle={handleToggle}
-                menuOpen={menuOpen === u.uid}
-                setMenuOpen={(open) => setMenuOpen(open ? u.uid : null)}
-              />
-            ))}
+            {filtered.map((u) => {
+              const isSelf = u.uid === currentUser?.uid;
+              const canManage = canManageUser(myLvl, u);
+              return (
+                <UserCard
+                  key={u.uid}
+                  user={u}
+                  isSelf={isSelf}
+                  canEdit={(isSelf || canManage) && can('users.edit')}
+                  canDelete={can('users.delete') && !isSelf && (canManage || isSuperAdmin)}
+                  canToggle={can('users.edit') && !isSelf && canManage}
+                  onEdit={handleEdit}
+                  onDelete={setDeleting}
+                  onToggle={handleToggle}
+                  menuOpen={menuOpen === u.uid}
+                  setMenuOpen={(open) => setMenuOpen(open ? u.uid : null)}
+                />
+              );
+            })}
           </AnimatePresence>
         </div>
       )}
 
-      {/* Form Modal */}
       <Modal
         open={formOpen}
         onClose={() => setFormOpen(false)}
@@ -286,19 +269,18 @@ export default function UsersPage() {
             ? 'Update user details, role and permissions.'
             : 'Add a new user with role-based permissions.'
         }
-        size="lg"
+        size="xl"
         closeOnOverlay={false}
       >
         <UserForm user={selected} onClose={() => setFormOpen(false)} />
       </Modal>
 
-      {/* Delete confirm */}
       <ConfirmDialog
         open={!!deleting}
         onClose={() => setDeleting(null)}
         onConfirm={handleDelete}
         title="Delete User?"
-        message={`"${deleting?.name}" (${deleting?.email}) will lose all access to this system immediately. Their Firebase Auth account remains but cannot sign in without a user record.`}
+        message={`"${deleting?.name}" (${deleting?.email}) will lose all access immediately. Their Firebase Auth account remains but cannot sign in without a user record.`}
         confirmLabel="Delete User"
         loading={deleteLoading}
       />
@@ -306,7 +288,6 @@ export default function UsersPage() {
   );
 }
 
-// ==================== Stat Chip ====================
 function StatChip({
   label,
   value,
@@ -333,15 +314,12 @@ function StatChip({
       </div>
       <div>
         <p className="text-xs font-semibold text-brand-choco-light">{label}</p>
-        <p className="font-display text-2xl font-bold leading-none mt-0.5">
-          {value}
-        </p>
+        <p className="font-display text-2xl font-bold leading-none mt-0.5">{value}</p>
       </div>
     </div>
   );
 }
 
-// ==================== User Card ====================
 function UserCard({
   user,
   isSelf,
@@ -368,7 +346,10 @@ function UserCard({
   const roleColor: Record<AppRole, string> = {
     super_admin: 'bg-brand-orange text-white',
     admin: 'bg-pastel-blue-deep/30 text-brand-choco',
+    hr: 'bg-pastel-pink-deep/30 text-brand-choco',
+    manager: 'bg-pastel-peach-deep/40 text-brand-choco',
     accountant: 'bg-pastel-green-deep/30 text-brand-choco',
+    employee: 'bg-brand-cream-dark text-brand-choco',
     custom: 'bg-pastel-peach-deep/40 text-brand-choco',
   };
 
@@ -378,12 +359,8 @@ function UserCard({
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, scale: 0.9 }}
-      className={cn(
-        'card !p-5 relative',
-        !user.active && 'opacity-60'
-      )}
+      className={cn('card !p-5 relative', !user.active && 'opacity-60')}
     >
-      {/* Menu */}
       {(canEdit || canDelete || canToggle) && (
         <div className="absolute top-3 right-3">
           <button
@@ -395,23 +372,14 @@ function UserCard({
           <AnimatePresence>
             {menuOpen && (
               <>
-                <div
-                  className="fixed inset-0 z-40"
-                  onClick={() => setMenuOpen(false)}
-                />
+                <div className="fixed inset-0 z-40" onClick={() => setMenuOpen(false)} />
                 <motion.div
                   initial={{ opacity: 0, scale: 0.95, y: -5 }}
                   animate={{ opacity: 1, scale: 1, y: 0 }}
                   exit={{ opacity: 0, scale: 0.95 }}
                   className="absolute right-0 mt-1 w-44 bg-white rounded-2xl shadow-2xl border border-brand-choco/8 py-1 z-50"
                 >
-                  {canEdit && (
-                    <MenuItem
-                      icon={Edit}
-                      label="Edit"
-                      onClick={() => onEdit(user)}
-                    />
-                  )}
+                  {canEdit && <MenuItem icon={Edit} label="Edit" onClick={() => onEdit(user)} />}
                   {canToggle && (
                     <MenuItem
                       icon={user.active ? PowerOff : Power}
@@ -440,28 +408,28 @@ function UserCard({
         </div>
       )}
 
-      {/* Avatar + name */}
       <div className="flex items-start gap-3 mb-4">
         <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-brand-orange-light to-brand-orange flex items-center justify-center text-white font-bold text-xl shadow-md shrink-0">
           {user.name[0]?.toUpperCase() ?? user.email[0]?.toUpperCase()}
         </div>
         <div className="min-w-0 flex-1 pr-8">
           <div className="flex items-center gap-2 flex-wrap">
-            <h3 className="font-bold text-brand-choco truncate">
-              {user.name}
-            </h3>
-            {isSelf && (
-              <span className="badge badge-info text-[9px]">You</span>
-            )}
+            <h3 className="font-bold text-brand-choco truncate">{user.name}</h3>
+            {isSelf && <span className="badge badge-info text-[9px]">You</span>}
           </div>
           <p className="text-xs text-brand-choco-soft truncate flex items-center gap-1">
             <Mail className="w-3 h-3" />
             {user.email}
           </p>
+          {user.designation && (
+            <p className="text-[11px] text-brand-choco-soft truncate mt-0.5">
+              {user.designation}
+              {user.department && ` · ${user.department}`}
+            </p>
+          )}
         </div>
       </div>
 
-      {/* Role + status */}
       <div className="flex items-center gap-2 flex-wrap">
         <span
           className={cn(
@@ -490,9 +458,26 @@ function UserCard({
         </span>
       </div>
 
-      {/* Meta */}
+      {(user.department || (user.assignedSchools && user.assignedSchools.length > 0)) && (
+        <div className="mt-3 flex items-center gap-3 text-[11px] text-brand-choco-soft flex-wrap">
+          {user.department && (
+            <span className="inline-flex items-center gap-1">
+              <Building className="w-3 h-3" />
+              {user.department}
+            </span>
+          )}
+          {user.assignedSchools && user.assignedSchools.length > 0 && (
+            <span className="inline-flex items-center gap-1">
+              <SchoolIcon className="w-3 h-3" />
+              {user.assignedSchools.length} school{user.assignedSchools.length > 1 ? 's' : ''}
+            </span>
+          )}
+        </div>
+      )}
+
       <div className="mt-4 pt-4 border-t border-brand-choco/8 flex items-center justify-between text-[10px] text-brand-choco-soft">
         <span>Created {user.createdAt ? formatDate(user.createdAt) : '—'}</span>
+        {user.joinedOn && <span>Joined {user.joinedOn}</span>}
       </div>
     </motion.div>
   );
@@ -514,9 +499,7 @@ function MenuItem({
       onClick={onClick}
       className={cn(
         'w-full flex items-center gap-2 px-3 py-2 text-sm font-semibold text-left transition',
-        danger
-          ? 'text-red-600 hover:bg-red-50'
-          : 'text-brand-choco hover:bg-brand-cream-dark'
+        danger ? 'text-red-600 hover:bg-red-50' : 'text-brand-choco hover:bg-brand-cream-dark'
       )}
     >
       <Icon className="w-4 h-4" />

@@ -1,0 +1,103 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isSignedIn() { return request.auth != null; }
+    function isMe(uid)    { return isSignedIn() && request.auth.uid == uid; }
+    function myProfile()  { return get(/databases/$(database)/documents/users/$(request.auth.uid)).data; }
+    function profileExists() {
+      return isSignedIn() && exists(/databases/$(database)/documents/users/$(request.auth.uid));
+    }
+    function isActive() { return profileExists() && myProfile().active != false; }
+    function isMyCompositeDoc(id) { return isSignedIn() && id.matches(request.auth.uid + '_.*'); }
+
+    // Legacy fallback
+    function isLegacy() { return isActive() && !('permissions' in myProfile()); }
+    function legacyRoleHas(perm) {
+      let role = myProfile().role;
+      return
+        (role == 'admin' || role == 'super_admin')
+        || (role == 'hr' && (
+             perm == 'dashboard.view'
+          || perm == 'users.view' || perm == 'users.create' || perm == 'users.edit'
+          || perm == 'schools.view' || perm == 'schools.create' || perm == 'schools.edit'
+          || perm == 'attendance_own.view' || perm == 'attendance_own.mark'
+          || perm == 'attendance_all.view' || perm == 'attendance_all.export'
+          || perm == 'leaves_own.apply' || perm == 'leaves_own.view' || perm == 'leaves_own.cancel'
+          || perm == 'leaves_all.view' || perm == 'leaves_all.approve' || perm == 'leaves_all.export'
+        ))
+        || (role == 'manager' && (
+             perm == 'dashboard.view' || perm == 'schools.view'
+          || perm == 'attendance_own.view' || perm == 'attendance_own.mark'
+          || perm == 'attendance_all.view' || perm == 'attendance_all.export'
+          || perm == 'leaves_own.apply' || perm == 'leaves_own.view' || perm == 'leaves_own.cancel'
+          || perm == 'leaves_all.view' || perm == 'leaves_all.approve'
+        ))
+        || (role == 'employee' && (
+             perm == 'dashboard.view' || perm == 'schools.view'
+          || perm == 'attendance_own.view' || perm == 'attendance_own.mark'
+          || perm == 'leaves_own.apply' || perm == 'leaves_own.view' || perm == 'leaves_own.cancel'
+        ));
+    }
+    function has(perm) {
+      return isActive() && (
+        ('permissions' in myProfile() && perm in myProfile().permissions)
+        || (isLegacy() && legacyRoleHas(perm))
+      );
+    }
+
+    match /users/{uid} {
+      allow get:    if isMe(uid) || has('users.view');
+      allow list:   if has('users.view');
+      allow create: if (isMe(uid) && !exists(/databases/$(database)/documents/users/$(uid)))
+                     || has('users.create');
+      allow update: if has('users.edit') || (
+        isMe(uid)
+        && request.resource.data.role == resource.data.role
+        && request.resource.data.active == resource.data.active
+        && (!('permissions' in resource.data) || request.resource.data.permissions == resource.data.permissions)
+        && (!('assignedSchools' in resource.data) || request.resource.data.assignedSchools == resource.data.assignedSchools)
+      );
+      allow delete: if has('users.delete');
+    }
+
+    match /schools/{id} {
+      allow read:   if has('schools.view');
+      allow create: if has('schools.create');
+      allow update: if has('schools.edit');
+      allow delete: if has('schools.delete');
+    }
+
+    match /attendance/{id} {
+      allow get:    if isMyCompositeDoc(id) || has('attendance_all.view');
+      allow list:   if has('attendance_own.view') || has('attendance_all.view');
+      allow create: if (has('attendance_own.mark') && request.resource.data.userId == request.auth.uid)
+                     || has('attendance_all.edit');
+      allow update: if (has('attendance_own.mark') && resource.data.userId == request.auth.uid)
+                     || has('attendance_all.edit');
+      allow delete: if has('attendance_all.edit');
+    }
+
+    match /leaveBalances/{id} {
+      allow get:    if isMyCompositeDoc(id) || has('users.view');
+      allow list:   if has('users.view') || isSignedIn();
+      allow create: if has('users.create') || (isMyCompositeDoc(id) && has('leaves_own.apply'));
+      allow update: if has('users.edit') || has('leaves_all.approve');
+      allow delete: if has('users.delete');
+    }
+
+    match /leaves/{id} {
+      allow get:    if (resource.data.userId == request.auth.uid) || has('leaves_all.view');
+      allow list:   if has('leaves_own.view') || has('leaves_all.view');
+      allow create: if has('leaves_own.apply') && request.resource.data.userId == request.auth.uid;
+      allow update: if (resource.data.userId == request.auth.uid && has('leaves_own.cancel'))
+                     || has('leaves_all.approve');
+      allow delete: if has('leaves_all.approve');
+    }
+
+    match /settings/{id} {
+      allow read:   if isSignedIn();
+      allow write:  if has('settings.edit');
+    }
+  }
+}

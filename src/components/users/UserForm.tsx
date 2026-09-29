@@ -11,6 +11,13 @@ import {
   Check,
   Info,
   Sparkles,
+  Phone,
+  Building,
+  Briefcase,
+  Calendar as CalendarIcon,
+  School as SchoolIcon,
+  MapPin,
+  RefreshCw,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { z } from 'zod';
@@ -22,13 +29,18 @@ import {
   getPresetForRole,
   detectRole,
   clonePermissions,
+  getAssignableRoles,
+  myLevel,
 } from '@/lib/permissions';
 import { createUser, updateUser } from '@/hooks/useUsers';
+import { useSchools } from '@/hooks/useSchools';
+import { useAttendanceSettings } from '@/hooks/useAttendanceSettings';
 import { useAuth } from '@/contexts/AuthContext';
 import { usePermission } from '@/hooks/usePermission';
+import { forwardGeocode } from '@/lib/attendance/geocode';
+import { todayKey } from '@/lib/attendance/datetime';
 import { cn } from '@/lib/utils';
 
-// ---------- Validation ----------
 const baseSchema = z.object({
   name: z.string().min(2, 'Name must be at least 2 characters'),
   email: z.string().email('Invalid email'),
@@ -36,9 +48,7 @@ const baseSchema = z.object({
 });
 
 const createSchema = baseSchema.extend({
-  password: z
-    .string()
-    .min(6, 'Password must be at least 6 characters'),
+  password: z.string().min(6, 'Password must be at least 6 characters'),
   confirmPassword: z.string(),
 });
 
@@ -48,38 +58,56 @@ interface Props {
 }
 
 export default function UserForm({ user, onClose }: Props) {
-  const { user: currentUser } = useAuth();
-  const { isSuperAdmin, isAdmin } = usePermission();
+  const { user: currentUser, userDoc } = useAuth();
+  const { isSuperAdmin } = usePermission();
+  const { schools } = useSchools();
+  const { settings } = useAttendanceSettings();
+  const departments = settings.departments ?? [];
   const isEditing = !!user;
+  const isSelf = user?.uid === currentUser?.uid;
+  const myLvl = myLevel(userDoc);
 
+  const availableRoleMap = useMemo(() => getAssignableRoles(myLvl), [myLvl]);
+  const availableRoles = Object.keys(availableRoleMap) as AppRole[];
+
+  // Basic fields
   const [name, setName] = useState(user?.name ?? '');
   const [email, setEmail] = useState(user?.email ?? '');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [active, setActive] = useState(user?.active ?? true);
-  const [role, setRole] = useState<AppRole>(user?.role ?? 'accountant');
-  const [permissions, setPermissions] = useState<Permissions>(
-    user?.permissions ?? getPresetForRole('accountant')
+  const [role, setRole] = useState<AppRole>(
+    user?.role ?? (availableRoles.includes('employee') ? 'employee' : availableRoles[0] ?? 'employee')
   );
+  const [permissions, setPermissions] = useState<Permissions>(
+    user?.permissions ?? getPresetForRole(role)
+  );
+
+  // Attendance fields
+  const [phone, setPhone] = useState(user?.phone ?? '');
+  const [department, setDepartment] = useState(user?.department ?? '');
+  const [designation, setDesignation] = useState(user?.designation ?? '');
+  const [joinedOn, setJoinedOn] = useState(user?.joinedOn ?? todayKey());
+  const [assignedSchools, setAssignedSchools] = useState<string[]>(user?.assignedSchools ?? []);
+
+  // Personal geofence
+  const [officeAddress, setOfficeAddress] = useState(user?.officeAddress ?? '');
+  const [officeLat, setOfficeLat] = useState<string>(user?.officeLat != null ? String(user.officeLat) : '');
+  const [officeLng, setOfficeLng] = useState<string>(user?.officeLng != null ? String(user.officeLng) : '');
+  const [officeRadiusM, setOfficeRadiusM] = useState<string>(
+    user?.officeRadiusM != null ? String(user.officeRadiusM) : ''
+  );
+  const [geocoding, setGeocoding] = useState(false);
 
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
 
-  // When role changes (non-custom), snap permissions to preset
   useEffect(() => {
-    if (role !== 'custom') {
+    if (role !== 'custom' && !isEditing) {
       setPermissions(getPresetForRole(role));
     }
-  }, [role]);
+  }, [role, isEditing]);
 
-  // Admins can only create Admin or Accountant (not Super Admin)
-  const availableRoles: AppRole[] = useMemo(() => {
-    if (isSuperAdmin) return ['super_admin', 'admin', 'accountant', 'custom'];
-    if (isAdmin) return ['admin', 'accountant'];
-    return [];
-  }, [isSuperAdmin, isAdmin]);
-
-  // Only Super Admin can edit the permission matrix directly
   const canEditMatrix = isSuperAdmin;
 
   const togglePermission = (moduleKey: string, actionKey: string) => {
@@ -87,9 +115,9 @@ export default function UserForm({ user, onClose }: Props) {
     const cloned = clonePermissions(permissions);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const module = (cloned as any)[moduleKey];
+    if (!module) return;
     module[actionKey] = !module[actionKey];
     setPermissions(cloned);
-    // Auto-detect if it matches a preset, otherwise mark as custom
     setRole(detectRole(cloned));
   };
 
@@ -98,13 +126,38 @@ export default function UserForm({ user, onClose }: Props) {
     const cloned = clonePermissions(permissions);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const module = (cloned as any)[moduleKey];
+    if (!module) return;
     Object.keys(module).forEach((k) => (module[k] = value));
     setPermissions(cloned);
     setRole(detectRole(cloned));
   };
 
+  const fetchCoords = async () => {
+    if (!officeAddress.trim()) return toast.error('Enter office address first');
+    setGeocoding(true);
+    try {
+      const r = await forwardGeocode(officeAddress);
+      if (r) {
+        setOfficeLat(String(r.lat));
+        setOfficeLng(String(r.lng));
+        toast.success('Coordinates fetched');
+      } else {
+        toast.error('Address not found');
+      }
+    } catch {
+      toast.error('Geocoding failed');
+    } finally {
+      setGeocoding(false);
+    }
+  };
+
+  const toggleSchool = (id: string) => {
+    setAssignedSchools((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+    );
+  };
+
   const handleSubmit = async () => {
-    // Validate
     const schema = isEditing ? baseSchema : createSchema;
     const result = schema.safeParse({
       name,
@@ -133,16 +186,34 @@ export default function UserForm({ user, onClose }: Props) {
 
     setErrors({});
     setSaving(true);
+
+    // Attendance profile fields
+    const attendancePayload = {
+      phone: phone || undefined,
+      department: department || undefined,
+      designation: designation || undefined,
+      joinedOn: joinedOn || undefined,
+      assignedSchools,
+      officeAddress: officeAddress || undefined,
+      officeLat: officeLat === '' ? null : parseFloat(officeLat),
+      officeLng: officeLng === '' ? null : parseFloat(officeLng),
+      officeRadiusM: officeRadiusM === '' ? null : parseInt(officeRadiusM),
+    };
+
     try {
       if (isEditing && user) {
-        // Only super admins can change role/permissions
         const patch: Parameters<typeof updateUser>[1] = {
           name: name.trim(),
           active,
+          ...attendancePayload,
         };
-        if (isSuperAdmin) {
+        if (!isSelf && canEditMatrix) {
           patch.role = role;
           patch.permissions = permissions;
+        } else if (!isSelf) {
+          // Non-super-admin manager can change role but not perms directly
+          patch.role = role;
+          patch.permissions = getPresetForRole(role);
         }
         await updateUser(user.uid, patch, {
           name: user.name,
@@ -159,14 +230,14 @@ export default function UserForm({ user, onClose }: Props) {
           permissions,
           active,
           createdBy: currentUser.uid,
+          ...attendancePayload,
         });
         toast.success('User created successfully');
       }
       onClose();
     } catch (err) {
       console.error(err);
-      const message =
-        err instanceof Error ? err.message : 'Something went wrong';
+      const message = err instanceof Error ? err.message : 'Something went wrong';
       toast.error(message);
     } finally {
       setSaving(false);
@@ -175,14 +246,16 @@ export default function UserForm({ user, onClose }: Props) {
 
   return (
     <div className="p-6 space-y-6">
+      {isSelf && (
+        <div className="rounded-2xl bg-pastel-peach border border-pastel-peach-deep/30 p-3 text-sm text-orange-900 flex items-start gap-2">
+          <Info className="w-4 h-4 shrink-0 mt-0.5" />
+          You're editing your own profile. Role and permissions can only be changed by another admin.
+        </div>
+      )}
+
       {/* Basic Info */}
       <section className="space-y-4">
-        <SectionHeader
-          icon={UserIcon}
-          title="Basic Information"
-          subtitle="User account details"
-        />
-
+        <SectionHeader icon={UserIcon} title="Basic Information" subtitle="User account details" />
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <Field label="Full Name" error={errors.name} required>
             <input
@@ -193,7 +266,6 @@ export default function UserForm({ user, onClose }: Props) {
               className="input-field"
             />
           </Field>
-
           <Field label="Email" error={errors.email} required>
             <div className="relative">
               <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-brand-choco-soft pointer-events-none" />
@@ -227,12 +299,7 @@ export default function UserForm({ user, onClose }: Props) {
                   />
                 </div>
               </Field>
-
-              <Field
-                label="Confirm Password"
-                error={errors.confirmPassword}
-                required
-              >
+              <Field label="Confirm Password" error={errors.confirmPassword} required>
                 <div className="relative">
                   <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-brand-choco-soft pointer-events-none" />
                   <input
@@ -246,6 +313,45 @@ export default function UserForm({ user, onClose }: Props) {
               </Field>
             </>
           )}
+
+          <Field label="Phone">
+            <div className="relative">
+              <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-brand-choco-soft pointer-events-none" />
+              <input
+                type="tel"
+                value={phone}
+                onChange={(e) => setPhone(e.target.value)}
+                placeholder="+91 …"
+                className="input-field pl-10"
+              />
+            </div>
+          </Field>
+          <Field label="Department">
+            <DepartmentPicker value={department} options={departments} onChange={setDepartment} />
+          </Field>
+          <Field label="Designation">
+            <div className="relative">
+              <Briefcase className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-brand-choco-soft pointer-events-none" />
+              <input
+                type="text"
+                value={designation}
+                onChange={(e) => setDesignation(e.target.value)}
+                placeholder="e.g. Senior Engineer"
+                className="input-field pl-10"
+              />
+            </div>
+          </Field>
+          <Field label="Date of Joining">
+            <div className="relative">
+              <CalendarIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-brand-choco-soft pointer-events-none" />
+              <input
+                type="date"
+                value={joinedOn}
+                onChange={(e) => setJoinedOn(e.target.value)}
+                className="input-field pl-10"
+              />
+            </div>
+          </Field>
         </div>
 
         {/* Active toggle */}
@@ -253,9 +359,11 @@ export default function UserForm({ user, onClose }: Props) {
           <button
             type="button"
             onClick={() => setActive(!active)}
+            disabled={isSelf}
             className={cn(
               'relative w-12 h-6 rounded-full transition-colors flex items-center shrink-0',
-              active ? 'bg-green-500' : 'bg-brand-choco/20'
+              active ? 'bg-green-500' : 'bg-brand-choco/20',
+              isSelf && 'opacity-50 cursor-not-allowed'
             )}
           >
             <motion.span
@@ -268,9 +376,7 @@ export default function UserForm({ user, onClose }: Props) {
             />
           </button>
           <div className="flex-1">
-            <p className="text-sm font-bold">
-              {active ? 'Active' : 'Inactive'}
-            </p>
+            <p className="text-sm font-bold">{active ? 'Active' : 'Inactive'}</p>
             <p className="text-xs text-brand-choco-soft">
               {active
                 ? 'User can sign in and use the system'
@@ -280,172 +386,250 @@ export default function UserForm({ user, onClose }: Props) {
         </div>
       </section>
 
-      {/* Role */}
+      {/* Role (only if not self and roles available) */}
+      {!isSelf && availableRoles.length > 0 && (
+        <section className="space-y-4">
+          <SectionHeader
+            icon={Shield}
+            title="Role"
+            subtitle={
+              canEditMatrix
+                ? 'Pick a preset or customize permissions below'
+                : 'Only roles strictly below your level are shown'
+            }
+          />
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+            {availableRoles.map((r) => (
+              <button
+                key={r}
+                type="button"
+                onClick={() => setRole(r)}
+                className={cn(
+                  'p-3 rounded-2xl border-2 text-left transition-all',
+                  role === r
+                    ? 'border-brand-orange bg-brand-orange-50'
+                    : 'border-brand-choco/8 bg-white hover:border-brand-orange/30'
+                )}
+              >
+                <div className="flex items-center gap-2 mb-1">
+                  <Shield
+                    className={cn(
+                      'w-4 h-4',
+                      role === r ? 'text-brand-orange' : 'text-brand-choco-soft'
+                    )}
+                  />
+                  <span className="text-sm font-bold">{ROLE_LABELS[r]}</span>
+                </div>
+                {role === r && (
+                  <p className="text-[10px] text-brand-choco-soft leading-tight">
+                    {ROLE_DESCRIPTIONS[r]}
+                  </p>
+                )}
+              </button>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* Assigned Schools */}
       <section className="space-y-4">
         <SectionHeader
-          icon={Shield}
-          title="Role"
-          subtitle={
-            isSuperAdmin
-              ? 'Pick a preset or customize permissions below'
-              : 'Only Super Admin can customize permissions'
-          }
+          icon={SchoolIcon}
+          title="Assigned Schools"
+          subtitle="Schools this user can check in from (for school-based attendance)"
         />
-
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-          {availableRoles.map((r) => (
-            <button
-              key={r}
-              type="button"
-              onClick={() => setRole(r)}
-              className={cn(
-                'p-3 rounded-2xl border-2 text-left transition-all',
-                role === r
-                  ? 'border-brand-orange bg-brand-orange-50'
-                  : 'border-brand-choco/8 bg-white hover:border-brand-orange/30'
-              )}
-            >
-              <div className="flex items-center gap-2 mb-1">
-                <Shield
+        {schools.length === 0 ? (
+          <div className="text-sm text-brand-choco-soft rounded-2xl bg-brand-cream-dark p-4">
+            No schools yet. Go to Schools → Add School first.
+          </div>
+        ) : (
+          <div className="rounded-2xl border border-brand-choco/10 divide-y divide-brand-choco/8 max-h-64 overflow-y-auto">
+            {schools.map((s) => {
+              const isOn = assignedSchools.includes(s.id);
+              return (
+                <label
+                  key={s.id}
                   className={cn(
-                    'w-4 h-4',
-                    role === r ? 'text-brand-orange' : 'text-brand-choco-soft'
+                    'flex items-center gap-3 p-3 cursor-pointer transition',
+                    isOn ? 'bg-brand-orange-50' : 'hover:bg-brand-cream-dark/40'
                   )}
-                />
-                <span className="text-sm font-bold">{ROLE_LABELS[r]}</span>
-              </div>
-              {role === r && (
-                <p className="text-[10px] text-brand-choco-soft leading-tight">
-                  {ROLE_DESCRIPTIONS[r]}
-                </p>
-              )}
-            </button>
-          ))}
-        </div>
-      </section>
-
-      {/* Permission Matrix */}
-      <section className="space-y-4">
-        <SectionHeader
-          icon={Sparkles}
-          title="Permissions Matrix"
-          subtitle={
-            canEditMatrix
-              ? 'Toggle individual permissions. Role auto-switches to Custom on any change.'
-              : 'Read-only preview. Only Super Admin can toggle these.'
-          }
-        />
-
-        {!canEditMatrix && (
-          <div className="flex items-start gap-2 p-3 rounded-xl bg-pastel-blue border border-pastel-blue-deep/30">
-            <Info className="w-4 h-4 text-brand-choco shrink-0 mt-0.5" />
-            <p className="text-xs text-brand-choco">
-              You are viewing this in read-only mode. Only Super Admins can
-              modify individual permissions. Change the <b>Role</b> above to
-              apply a preset.
-            </p>
+                >
+                  <input
+                    type="checkbox"
+                    checked={isOn}
+                    onChange={() => toggleSchool(s.id)}
+                    className="w-4 h-4 accent-brand-orange"
+                  />
+                  <div className="flex-1 min-w-0">
+                    <div className="font-semibold text-sm text-brand-choco">{s.name}</div>
+                    <div className="text-xs text-brand-choco-soft">
+                      In {s.inTime} · Out {s.outTime}
+                    </div>
+                  </div>
+                </label>
+              );
+            })}
           </div>
         )}
+      </section>
 
-        <div className="rounded-2xl border border-brand-choco/8 overflow-hidden bg-white">
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead>
-                <tr className="bg-brand-cream-dark border-b border-brand-choco/8 text-xs font-bold uppercase tracking-wider text-brand-choco-soft">
-                  <th className="text-left p-3">Module</th>
-                  <th className="text-center p-3 w-16">All</th>
-                  <th className="text-left p-3">Permissions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {PERMISSION_MODULES.map((mod) => {
-                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                  const modulePerms = (permissions as any)[mod.key];
-                  const allTrue = mod.actions.every(
-                    (a) => modulePerms?.[a.key] === true
-                  );
-                  const someTrue = mod.actions.some(
-                    (a) => modulePerms?.[a.key] === true
-                  );
-
-                  return (
-                    <tr
-                      key={mod.key}
-                      className="border-b border-brand-choco/5 hover:bg-brand-cream-dark/30 transition"
-                    >
-                      <td className="p-3 font-bold text-sm">{mod.label}</td>
-                      <td className="p-3 text-center">
-                        <button
-                          type="button"
-                          onClick={() =>
-                            handleToggleAll(mod.key, !allTrue)
-                          }
-                          disabled={!canEditMatrix}
-                          className={cn(
-                            'w-6 h-6 rounded-md border-2 flex items-center justify-center transition-all',
-                            allTrue
-                              ? 'bg-brand-orange border-brand-orange text-white'
-                              : someTrue
-                              ? 'bg-brand-orange/30 border-brand-orange text-brand-orange'
-                              : 'bg-white border-brand-choco/20 hover:border-brand-orange',
-                            !canEditMatrix && 'opacity-50 cursor-not-allowed'
-                          )}
-                        >
-                          {allTrue && <Check className="w-3.5 h-3.5" />}
-                          {!allTrue && someTrue && (
-                            <div className="w-2.5 h-0.5 bg-brand-orange rounded-full" />
-                          )}
-                        </button>
-                      </td>
-                      <td className="p-3">
-                        <div className="flex flex-wrap gap-2">
-                          {mod.actions.map((action) => {
-                            const enabled = modulePerms?.[action.key] === true;
-                            return (
-                              <button
-                                key={action.key}
-                                type="button"
-                                onClick={() =>
-                                  togglePermission(mod.key, action.key)
-                                }
-                                disabled={!canEditMatrix}
-                                className={cn(
-                                  'inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all border',
-                                  enabled
-                                    ? 'bg-brand-orange text-white border-brand-orange shadow-sm'
-                                    : 'bg-white text-brand-choco-soft border-brand-choco/15 hover:border-brand-orange/40',
-                                  !canEditMatrix &&
-                                    'opacity-60 cursor-not-allowed'
-                                )}
-                              >
-                                {enabled ? (
-                                  <Check className="w-3 h-3" />
-                                ) : (
-                                  <span className="w-3 h-3" />
-                                )}
-                                {action.label}
-                              </button>
-                            );
-                          })}
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+      {/* Personal Geofence */}
+      <section className="space-y-4">
+        <SectionHeader
+          icon={MapPin}
+          title="Personal Office Location"
+          subtitle="Overrides org default for this user's office check-ins"
+        />
+        <div className="grid grid-cols-1 gap-3">
+          <Field label="Office Address">
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={officeAddress}
+                onChange={(e) => setOfficeAddress(e.target.value)}
+                placeholder="e.g. Sector 62, Noida"
+                className="input-field flex-1"
+              />
+              <button
+                type="button"
+                onClick={fetchCoords}
+                disabled={geocoding}
+                className="btn-secondary whitespace-nowrap"
+              >
+                {geocoding ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+                Fetch
+              </button>
+            </div>
+          </Field>
+          <div className="grid grid-cols-3 gap-3">
+            <Field label="Latitude">
+              <input
+                type="number"
+                step="any"
+                value={officeLat}
+                onChange={(e) => setOfficeLat(e.target.value)}
+                className="input-field"
+              />
+            </Field>
+            <Field label="Longitude">
+              <input
+                type="number"
+                step="any"
+                value={officeLng}
+                onChange={(e) => setOfficeLng(e.target.value)}
+                className="input-field"
+              />
+            </Field>
+            <Field label="Radius (m)">
+              <input
+                type="number"
+                min="10"
+                value={officeRadiusM}
+                onChange={(e) => setOfficeRadiusM(e.target.value)}
+                placeholder="100"
+                className="input-field"
+              />
+            </Field>
           </div>
         </div>
       </section>
 
-      {/* Actions */}
+      {/* Permission Matrix (only for super admin, editing others) */}
+      {!isSelf && canEditMatrix && (
+        <section className="space-y-4">
+          <SectionHeader
+            icon={Sparkles}
+            title="Permissions Matrix"
+            subtitle="Toggle individual permissions. Role auto-switches to Custom on any change."
+          />
+          <div className="rounded-2xl border border-brand-choco/8 overflow-hidden bg-white">
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead>
+                  <tr className="bg-brand-cream-dark border-b border-brand-choco/8 text-xs font-bold uppercase tracking-wider text-brand-choco-soft">
+                    <th className="text-left p-3">Module</th>
+                    <th className="text-center p-3 w-16">All</th>
+                    <th className="text-left p-3">Permissions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {PERMISSION_MODULES.map((mod) => {
+                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                    const modulePerms = (permissions as any)[mod.key];
+                    const allTrue = mod.actions.every((a) => modulePerms?.[a.key] === true);
+                    const someTrue = mod.actions.some((a) => modulePerms?.[a.key] === true);
+
+                    return (
+                      <tr
+                        key={mod.key}
+                        className="border-b border-brand-choco/5 hover:bg-brand-cream-dark/30 transition"
+                      >
+                        <td className="p-3 font-bold text-sm">
+                          {mod.label}
+                          {mod.section === 'attendance' && (
+                            <span className="ml-2 text-[9px] font-bold uppercase text-brand-orange">
+                              Attendance
+                            </span>
+                          )}
+                        </td>
+                        <td className="p-3 text-center">
+                          <button
+                            type="button"
+                            onClick={() => handleToggleAll(mod.key, !allTrue)}
+                            className={cn(
+                              'w-6 h-6 rounded-md border-2 flex items-center justify-center transition-all',
+                              allTrue
+                                ? 'bg-brand-orange border-brand-orange text-white'
+                                : someTrue
+                                ? 'bg-brand-orange/30 border-brand-orange text-brand-orange'
+                                : 'bg-white border-brand-choco/20 hover:border-brand-orange'
+                            )}
+                          >
+                            {allTrue && <Check className="w-3.5 h-3.5" />}
+                            {!allTrue && someTrue && (
+                              <div className="w-2.5 h-0.5 bg-brand-orange rounded-full" />
+                            )}
+                          </button>
+                        </td>
+                        <td className="p-3">
+                          <div className="flex flex-wrap gap-2">
+                            {mod.actions.map((action) => {
+                              const enabled = modulePerms?.[action.key] === true;
+                              return (
+                                <button
+                                  key={action.key}
+                                  type="button"
+                                  onClick={() => togglePermission(mod.key, action.key)}
+                                  className={cn(
+                                    'inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all border',
+                                    enabled
+                                      ? 'bg-brand-orange text-white border-brand-orange shadow-sm'
+                                      : 'bg-white text-brand-choco-soft border-brand-choco/15 hover:border-brand-orange/40'
+                                  )}
+                                >
+                                  {enabled ? (
+                                    <Check className="w-3 h-3" />
+                                  ) : (
+                                    <span className="w-3 h-3" />
+                                  )}
+                                  {action.label}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+      )}
+
       <div className="flex items-center justify-end gap-3 pt-4 border-t border-brand-choco/8">
-        <button
-          type="button"
-          onClick={onClose}
-          disabled={saving}
-          className="btn-secondary"
-        >
+        <button type="button" onClick={onClose} disabled={saving} className="btn-secondary">
           Cancel
         </button>
         <button
@@ -516,6 +700,76 @@ function Field({
           <AlertCircle className="w-3 h-3" /> {error}
         </p>
       )}
+    </div>
+  );
+}
+
+function DepartmentPicker({
+  value,
+  options,
+  onChange,
+}: {
+  value: string;
+  options: string[];
+  onChange: (v: string) => void;
+}) {
+  const inOptions = value && options.includes(value);
+  const [mode, setMode] = useState<'select' | 'other'>(
+    inOptions || !value ? 'select' : 'other'
+  );
+
+  if (mode === 'other') {
+    return (
+      <div className="flex gap-2">
+        <div className="relative flex-1">
+          <Building className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-brand-choco-soft pointer-events-none" />
+          <input
+            type="text"
+            className="input-field pl-10"
+            placeholder="Type department name"
+            value={value}
+            onChange={(e) => onChange(e.target.value)}
+          />
+        </div>
+        {options.length > 0 && (
+          <button
+            type="button"
+            className="btn-secondary text-xs whitespace-nowrap"
+            onClick={() => {
+              setMode('select');
+              onChange('');
+            }}
+          >
+            List
+          </button>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div className="relative">
+      <Building className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-brand-choco-soft pointer-events-none" />
+      <select
+        className="input-field pl-10"
+        value={inOptions ? value : ''}
+        onChange={(e) => {
+          if (e.target.value === '__other__') {
+            setMode('other');
+            onChange('');
+          } else {
+            onChange(e.target.value);
+          }
+        }}
+      >
+        <option value="">— Select —</option>
+        {options.map((d) => (
+          <option key={d} value={d}>
+            {d}
+          </option>
+        ))}
+        <option value="__other__">+ Other (type new)</option>
+      </select>
     </div>
   );
 }

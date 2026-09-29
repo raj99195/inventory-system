@@ -1,10 +1,19 @@
 import type { Timestamp } from 'firebase/firestore';
 
 // ==================== ROLES & PERMISSIONS ====================
-export type AppRole = 'super_admin' | 'admin' | 'accountant' | 'custom';
+export type AppRole =
+  | 'super_admin'
+  | 'admin'
+  | 'hr'
+  | 'manager'
+  | 'accountant'
+  | 'employee'
+  | 'custom';
 
 export interface Permissions {
   dashboard: { view: boolean };
+
+  // ---------- Inventory modules ----------
   products: { view: boolean; create: boolean; edit: boolean; delete: boolean };
   kits: { view: boolean; create: boolean; edit: boolean; delete: boolean };
   stock: {
@@ -41,6 +50,43 @@ export interface Permissions {
   categories: { view: boolean; create: boolean; delete: boolean };
   audit: { view: boolean };
   users: { view: boolean; create: boolean; edit: boolean; delete: boolean };
+
+  // ---------- Attendance modules ----------
+  attendance?: {
+    markOwn: boolean;
+    viewOwn: boolean;
+    viewAll: boolean;
+    editAll: boolean;
+    exportAll: boolean;
+  };
+  leaves?: {
+    applyOwn: boolean;
+    viewOwn: boolean;
+    cancelOwn: boolean;
+    viewAll: boolean;
+    approve: boolean;
+    exportAll: boolean;
+  };
+  schools?: {
+    view: boolean;
+    create: boolean;
+    edit: boolean;
+    delete: boolean;
+  };
+  settings?: {
+    view: boolean;
+    edit: boolean; // LOCKED - only super_admin
+  };
+
+  // ---------- Requests module (NEW) ----------
+  // Any user can request an asset/product; approver auto-assigns on approve.
+  requests?: {
+    createOwn: boolean; // request an item
+    viewOwn: boolean; // see my requests
+    cancelOwn: boolean; // cancel my pending request
+    viewAll: boolean; // admin/manager sees all
+    approve: boolean; // approve/reject + auto-fulfill
+  };
 }
 
 // ==================== APP USER ====================
@@ -51,6 +97,27 @@ export interface AppUser {
   role: AppRole;
   permissions: Permissions;
   active: boolean;
+
+  // Attendance profile
+  phone?: string;
+  department?: string;
+  designation?: string;
+  assignedSchools?: string[];
+  officeAddress?: string;
+  officeLat?: number | null;
+  officeLng?: number | null;
+  officeRadiusM?: number | null;
+  joinedOn?: string;
+
+  // HR
+  employeeId?: string;
+  photoUrl?: string;
+
+  // Soft-delete
+  deleted?: boolean;
+  originalEmail?: string | null;
+  deletedAt?: string | null;
+
   createdAt: Timestamp;
   createdBy: string;
   updatedAt: Timestamp;
@@ -125,7 +192,8 @@ export type StockSource =
   | 'zoho-invoice'
   | 'return'
   | 'adjustment'
-  | 'kit-assembly';
+  | 'kit-assembly'
+  | 'request-fulfilled';
 
 export interface StockTransaction {
   id: string;
@@ -141,6 +209,7 @@ export interface StockTransaction {
   invoiceId?: string;
   kitId?: string;
   kitSku?: string;
+  requestId?: string; // NEW: link back to request that triggered this stock-out
   attachmentUrl?: string;
   performedBy: string;
   createdAt: Timestamp;
@@ -225,9 +294,8 @@ export interface Quotation {
   totalDiscount: number;
   totalTax: number;
   grandTotal: number;
-  // 🔒 INTERNAL FIELDS — never exported to customer PDF
-  marginPercent?: number; // % markup on cost (0-1000); used for internal profitability tracking
-  internalNotes?: string; // internal-only reference notes
+  marginPercent?: number;
+  internalNotes?: string;
   terms?: string;
   notes?: string;
   status: QuotationStatus;
@@ -238,7 +306,7 @@ export interface Quotation {
   acceptedAt?: Timestamp;
 }
 
-// ==================== EMPLOYEES ====================
+// ==================== EMPLOYEES (legacy) ====================
 export type EmployeeStatus = 'active' | 'inactive' | 'resigned' | 'terminated';
 
 export interface Employee {
@@ -309,6 +377,7 @@ export interface AssetAssignment {
   transferredTo?: string;
   remarks?: string;
   performedBy: string;
+  requestId?: string; // NEW: link back to request that triggered this assignment
   createdAt: Timestamp;
 }
 
@@ -348,5 +417,161 @@ export interface AuditLog {
   reason?: string;
   performedBy: string;
   performedByEmail: string;
+  createdAt: Timestamp;
+}
+
+// ==================== ATTENDANCE ====================
+export type LocationType = 'school' | 'office' | 'wfh';
+
+export interface AttendanceRecord {
+  id: string;
+  userId: string;
+  date: string;
+  checkInAt: string;
+  checkOutAt: string | null;
+  checkInSelfie: string;
+  checkOutSelfie: string | null;
+  checkInLat: number;
+  checkInLng: number;
+  checkInAddress: string;
+  checkOutLat: number | null;
+  checkOutLng: number | null;
+  checkOutAddress: string | null;
+  locationType: LocationType;
+  schoolId: string | null;
+  schoolName: string | null;
+  isLate: boolean;
+  workingMinutes: number;
+  notes: string;
+}
+
+// ==================== LEAVES ====================
+export type LeaveCode = 'CL' | 'SL' | 'EL' | 'ML' | 'PL' | 'CO' | 'BL' | 'LOP';
+export type LeaveStatus = 'pending' | 'approved' | 'rejected' | 'cancelled';
+
+export interface Leave {
+  id: string;
+  userId: string;
+  leaveType: LeaveCode | string;
+  fromDate: string;
+  toDate: string;
+  days: number;
+  reason: string;
+  status: LeaveStatus;
+  appliedAt: string;
+  reviewedBy: string | null;
+  reviewedAt: string | null;
+  reviewNotes: string | null;
+}
+
+export interface LeaveBalanceMap {
+  CL?: number;
+  SL?: number;
+  EL?: number;
+  ML?: number;
+  PL?: number;
+  CO?: number;
+  BL?: number;
+  LOP?: number;
+  [key: string]: number | undefined;
+}
+
+export interface LeaveBalance {
+  id: string;
+  userId: string;
+  year: number;
+  balances: LeaveBalanceMap;
+}
+
+export interface LeaveTypeConfig {
+  code: string;
+  name: string;
+  default: number;
+  colorHex: string;
+}
+
+// ==================== SCHOOLS ====================
+export type WorkingDay = 'MO' | 'TU' | 'WE' | 'TH' | 'FR' | 'SA' | 'SU';
+
+export interface School {
+  id: string;
+  name: string;
+  inTime: string;
+  outTime: string;
+  workingDays: WorkingDay[];
+  address: string;
+  lat: number;
+  lng: number;
+  radiusM: number;
+  active: boolean;
+  createdAt?: Timestamp;
+  updatedAt?: Timestamp;
+}
+
+// ==================== ATTENDANCE SETTINGS ====================
+export interface AttendanceSettings {
+  id: 'general';
+  officeStartTime: string;
+  officeEndTime: string;
+  lateGraceMinutes: number;
+  workingDays: WorkingDay[];
+  orgGeofence: {
+    lat: number;
+    lng: number;
+    radiusM: number;
+  };
+  strictGeofence: boolean;
+  leaveTypes: LeaveTypeConfig[];
+  departments: string[];
+}
+
+// ==================== ASSET REQUESTS (NEW) ====================
+export type RequestItemType = 'asset' | 'product' | 'kit';
+export type RequestStatus =
+  | 'pending'
+  | 'approved'
+  | 'rejected'
+  | 'cancelled'
+  | 'fulfilled';
+export type RequestUrgency = 'normal' | 'urgent';
+
+/**
+ * A user's request for an item from inventory.
+ * On approval, the approver's action auto-creates either:
+ *   - an assetAssignments doc (for itemType === 'asset'), OR
+ *   - a stockTransactions doc (for itemType === 'product' or 'kit')
+ * and marks the request as 'fulfilled'.
+ */
+export interface AssetRequest {
+  id: string;
+
+  // Requester
+  userId: string;
+  userName: string;
+  userEmail: string;
+  userDepartment?: string;
+
+  // What they want
+  itemType: RequestItemType;
+  itemId: string;
+  itemName: string;
+  itemSku?: string;
+  quantity: number; // always 1 for asset; N for product/kit
+  reason: string;
+  urgency: RequestUrgency;
+
+  // Lifecycle
+  status: RequestStatus;
+  requestedAt: string; // ISO
+  reviewedBy: string | null;
+  reviewerName: string | null;
+  reviewedAt: string | null;
+  reviewNotes: string | null;
+  fulfilledAt: string | null;
+
+  // Cross-refs (set on fulfillment)
+  assignmentId?: string | null; // for asset requests
+  stockTxId?: string | null; // for product/kit requests
+
   createdAt: Timestamp;
 }

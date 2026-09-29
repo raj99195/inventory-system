@@ -22,6 +22,7 @@ import { auth, db } from '@/lib/firebase';
 import {
   BOOTSTRAP_SUPER_ADMIN_UID,
   SUPER_ADMIN_PRESET,
+  normalizePermissions,
 } from '@/lib/permissions';
 import type { AppUser } from '@/types';
 
@@ -108,7 +109,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       ref,
       (snap) => {
         if (snap.exists()) {
-          setUserDoc({ uid: snap.id, ...snap.data() } as AppUser);
+          const raw = snap.data();
+          // Normalize permissions to guard against legacy user docs that
+          // lack the newer attendance/leaves/schools/settings modules.
+          // Without this, `perms.attendance.markOwn` etc. throw on undefined.
+          const normalized: AppUser = {
+            uid: snap.id,
+            ...raw,
+            permissions: normalizePermissions(raw.permissions),
+          } as AppUser;
+          setUserDoc(normalized);
           setNoAccess(false);
         } else {
           // Signed in but no user doc — user isn't provisioned in this system

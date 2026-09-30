@@ -107,5 +107,8 @@ export function isWorkingDay(dateStr: string, workingDays: readonly string[], sa
   const d = new Date(year, month - 1, day);
   if (d.getFullYear() !== year || d.getMonth() !== month - 1 || d.getDate() !== day) return false;
   if (!workingDays.includes(weekdayCode(d))) return false;
-  return d.getDay() !== 6 || !saturdayOffWeeks.includes(Math.ceil(day / 7));
+  if (d.getDay() !== 6) return true;
+  const isLastSaturday = new Date(year, month - 1, day + 7).getMonth() !== d.getMonth();
+  const ordinal = Math.ceil(day / 7);
+  return !(ordinal !== 4 && saturdayOffWeeks.includes(ordinal)) && !((saturdayOffWeeks.includes(4) || saturdayOffWeeks.includes(6)) && isLastSaturday);
 }

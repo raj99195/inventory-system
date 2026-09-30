@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useId, Suspense } from 'react';
+import { useState, useRef, useEffect, useId, Suspense, Fragment } from 'react';
 import { Outlet, NavLink, useNavigate, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -40,7 +40,7 @@ import {
   useQuickAdd,
   type QuickAddType,
 } from '@/contexts/QuickAddContext';
-import { ROLE_LABELS } from '@/lib/permissions';
+import { ROLE_LABELS, hrmsHomePath } from '@/lib/permissions';
 import { cn } from '@/lib/utils';
 import toast from 'react-hot-toast';
 import Logo from '@/components/ui/Logo';
@@ -59,6 +59,21 @@ interface NavItem {
 interface NavSection {
   title: string;
   items: NavItem[];
+}
+
+function isHrmsPath(path: string): boolean {
+  return path === '/' || path.startsWith('/attendance') || ['/employees', '/users', '/audit'].includes(path);
+}
+
+function navGroup(item: NavItem, section: string, can: (permission: string) => boolean): string {
+  if (section === 'HRMS') {
+    if (item.to === '/attendance/admin/schools') return ['schools.create', 'schools.edit', 'schools.delete'].some(can) ? 'Management' : 'Personal';
+    return item.to.startsWith('/attendance/admin') || ['/employees', '/users', '/audit'].includes(item.to) ? 'Management' : 'Personal';
+  }
+  if (item.to.startsWith('/requests')) return 'Requests';
+  if (['/assets', '/assignments'].includes(item.to)) return 'Asset Management';
+  if (['/invoices', '/quotations'].includes(item.to)) return 'Finance';
+  return 'Stock & Products';
 }
 
 const NAV_SECTIONS: NavSection[] = [
@@ -168,7 +183,7 @@ export default function DashboardLayout() {
                 <Menu className="w-5 h-5" />
               </button>
 
-              <NavLink to="/attendance" aria-label="HRMS Home" className="lg:hidden w-11 h-11 shrink-0 rounded-2xl bg-white border border-brand-choco/8 flex items-center justify-center">
+              <NavLink to={hrmsHomePath(userDoc)} aria-label="HRMS Home" className="lg:hidden w-11 h-11 shrink-0 rounded-2xl bg-white border border-brand-choco/8 flex items-center justify-center">
                 <HomeIcon className="w-5 h-5" />
               </NavLink>
 
@@ -180,6 +195,9 @@ export default function DashboardLayout() {
               </div>
 
               <div className="flex-1" />
+              <select aria-label="Select module" value={isHrmsPath(location.pathname) ? 'HRMS' : 'Inventory'} onChange={(e) => navigate(e.target.value === 'HRMS' ? hrmsHomePath(userDoc) : '/inventory')} className="h-11 px-3 rounded-xl bg-white border border-brand-choco/10 text-sm font-bold">
+                <option value="HRMS">HRMS</option><option value="Inventory">Inventory</option>
+              </select>
 
               <GlobalSearch />
               <QuickActionsMenu />
@@ -203,6 +221,7 @@ function getPageTitle(path: string) {
   }
   const map: Record<string, { category: string; title: string }> = {
     '/': { category: 'Overview', title: 'Dashboard' },
+    '/inventory': { category: 'Inventory', title: 'Overview' },
     '/products': { category: 'Inventory', title: 'Products' },
     '/kits': { category: 'Inventory', title: 'Kits' },
     '/stock': { category: 'Inventory', title: 'Stock Movement' },
@@ -480,10 +499,10 @@ function UserMenu({ userEmail, userName, userRole, onLogout }: {
             </div>
             <div className="p-2">
               {can('dashboard.view') && (
-                <button type="button" onClick={() => { navigate('/'); setOpen(false); }}
+                <button type="button" onClick={() => { navigate('/inventory'); setOpen(false); }}
                   className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold text-brand-choco hover:bg-brand-cream-dark transition text-left">
                   <div className="w-8 h-8 rounded-xl bg-brand-orange-100 flex items-center justify-center"><LayoutDashboard className="w-4 h-4 text-brand-orange" /></div>
-                  <div className="flex-1"><p className="text-sm font-bold leading-tight">Dashboard</p><p className="text-[10px] text-brand-choco-soft leading-tight mt-0.5">Overview and activity</p></div>
+                  <div className="flex-1"><p className="text-sm font-bold leading-tight">Inventory Overview</p><p className="text-[10px] text-brand-choco-soft leading-tight mt-0.5">Overview and activity</p></div>
                 </button>
               )}
               {can('audit.view') && (
@@ -524,11 +543,12 @@ function SidebarContent({ onLogout, userEmail, userName, userRole, onNavigate }:
   onLogout: () => void; userEmail: string; userName: string; userRole: string | null; onNavigate?: () => void;
 }) {
   const { can } = usePermission();
+  const { userDoc } = useAuth();
+  const navigate = useNavigate();
 
   const location = useLocation();
   const navId = useId();
-  const currentSection = location.pathname.startsWith('/attendance') ? 'HRMS'
-    : location.pathname === '/' || ['/users', '/audit'].includes(location.pathname) ? null : 'Inventory';
+  const currentSection = isHrmsPath(location.pathname) ? 'HRMS' : 'Inventory';
   const [expanded, setExpanded] = useState<Record<string, boolean>>(() => ({
     Inventory: currentSection === 'Inventory', HRMS: currentSection === 'HRMS',
   }));
@@ -538,7 +558,7 @@ function SidebarContent({ onLogout, userEmail, userName, userRole, onNavigate }:
 
   const visibleSections = NAV_SECTIONS.map((section) => {
     const items = section.items
-      .filter((item) => can(item.viewPerm))
+      .filter((item) => can(item.viewPerm) || (item.to === '/users' && can('users.create')))
       .map((item) => ({ ...item, children: item.children?.filter((c) => can(c.viewPerm)) ?? [] }));
     return { ...section, items };
   }).filter((s) => s.items.length > 0);
@@ -566,7 +586,13 @@ function SidebarContent({ onLogout, userEmail, userName, userRole, onNavigate }:
           return (
             <div key={section.title}>
               <button type="button" aria-expanded={isOpen} aria-controls={panelId}
-                onClick={() => setExpanded((previous) => ({ ...previous, [section.title]: !previous[section.title] }))}
+                onClick={() => {
+                  setExpanded((previous) => ({ ...previous, [section.title]: !isOpen }));
+                  if (!isOpen) {
+                    const home = section.title === 'HRMS' ? hrmsHomePath(userDoc) : '/inventory';
+                    if (location.pathname !== home) navigate(home);
+                  }
+                }}
                 className={cn('flex items-center gap-3 w-full rounded-2xl px-3 py-3.5 text-left font-bold transition-colors focus-visible:outline-2 focus-visible:outline-brand-orange',
                   currentSection === section.title ? 'bg-brand-orange-50 text-brand-orange-dark' : 'text-brand-choco hover:bg-brand-cream-dark')}>
                 <SectionIcon className="w-5 h-5 shrink-0" />
@@ -574,9 +600,10 @@ function SidebarContent({ onLogout, userEmail, userName, userRole, onNavigate }:
                 <ChevronDown className={cn('w-4 h-4 transition-transform', isOpen && 'rotate-180')} />
               </button>
               <div id={panelId} hidden={!isOpen} className="mt-2 ml-2 pl-2 border-l border-brand-choco/10 space-y-1">
-                {section.items.map((item) => (
-                  <SidebarNavItem key={item.to} item={item} onNavigate={onNavigate} />
-                ))}
+                {Array.from(new Set(section.items.map((item) => navGroup(item, section.title, can)))).map((group) => <Fragment key={group}>
+                  <p className="px-3 pt-3 pb-1 text-[10px] uppercase tracking-wider font-bold text-brand-choco-soft">{group}</p>
+                  {section.items.filter((item) => navGroup(item, section.title, can) === group).map((item) => <SidebarNavItem key={item.to} item={item} onNavigate={onNavigate} />)}
+                </Fragment>)}
               </div>
             </div>
           );

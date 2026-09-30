@@ -13,9 +13,11 @@ import {
   serverTimestamp,
   runTransaction,
   limit,
+  type Transaction,
 } from 'firebase/firestore';
 import { db, auth } from '@/lib/firebase';
-import type { Leave, LeaveBalance, LeaveBalanceMap } from '@/types';
+import type { AppUser, Leave, LeaveBalance, LeaveBalanceMap } from '@/types';
+import { canActOnUser, hasPermission } from '@/lib/permissions';
 import { logAudit } from '@/lib/audit';
 import { getAttendanceSettings, useAttendanceSettings } from '@/hooks/useAttendanceSettings';
 import { resolveLeaveBalances } from '@/lib/attendance/leaveBalances';
@@ -26,6 +28,18 @@ const COL = 'leaves';
 const BAL_COL = 'leaveBalances';
 
 const balanceId = (userId: string, year: number) => `${userId}_${year}`;
+
+async function assertLeaveAction(tx: Transaction, targetId: string, permission: string): Promise<AppUser> {
+  const actorId = auth.currentUser?.uid;
+  if (!actorId) throw new Error('Not authenticated');
+  const actorSnap = await tx.get(doc(db, 'users', actorId));
+  const targetSnap = await tx.get(doc(db, 'users', targetId));
+  if (!actorSnap.exists() || !targetSnap.exists()) throw new Error('User profile not found');
+  const actor = { ...actorSnap.data(), uid: actorId } as AppUser;
+  const target = { ...targetSnap.data(), uid: targetId } as AppUser;
+  if (!canActOnUser(actor, target) || !(actor.role === 'super_admin' || hasPermission(actor.permissions, permission))) throw new Error('You can only manage users below your role');
+  return target;
+}
 
 // ─── Hooks ─────────────────────────────────────────────────────
 
@@ -137,6 +151,8 @@ export function useLeaveBalance(
   const [loading, setLoading] = useState(true);
   const [history, setHistory] = useState<Leave[]>([]);
   const [historyLoading, setHistoryLoading] = useState(true);
+  const [joinedOn, setJoinedOn] = useState<string>();
+  const [profileLoading, setProfileLoading] = useState(true);
 
   useEffect(() => {
     if (!userId) {
@@ -149,6 +165,8 @@ export function useLeaveBalance(
     setError(null);
     setHistoryLoading(true);
     setHistory([]);
+    setProfileLoading(true);
+    const stopProfile = onSnapshot(doc(db, 'users', userId), (snap) => { setJoinedOn(snap.data()?.joinedOn); setProfileLoading(false); }, (err) => { setError(err); setProfileLoading(false); });
     const stopHistory = onSnapshot(query(collection(db, COL), where('userId', '==', userId)), (snap) => {
       setHistory(snap.docs.map((item) => ({ id: item.id, ...item.data() } as Leave)));
       setHistoryLoading(false);
@@ -169,13 +187,13 @@ export function useLeaveBalance(
         setLoading(false);
       }
     );
-    return () => { unsub(); stopHistory(); };
+    return () => { unsub(); stopHistory(); stopProfile(); };
   }, [userId, year]);
 
-  const effective = resolveLeaveBalances(settings.leaveTypes, balance, settings.leaveAllowanceBaselines, history, year);
+  const effective = resolveLeaveBalances(settings.leaveTypes, balance, settings.leaveAllowanceBaselines, history, year, joinedOn);
   return {
     balance: userId ? { id: balanceId(userId, year), userId, year, ...effective } : null,
-    loading: loading || settingsLoading || (!!userId && historyLoading),
+    loading: loading || settingsLoading || (!!userId && (historyLoading || profileLoading)),
     error: error ?? settingsError,
   };
 }
@@ -184,16 +202,18 @@ export function useLeaveBalance(
 async function ensureVerifiedBalance(userId: string, year: number): Promise<void> {
   const ref = doc(db, BAL_COL, balanceId(userId, year));
   const existing = await getDocFromServer(ref);
+  await runTransaction(db, async (tx) => { await assertLeaveAction(tx, userId, 'leaves.approve'); });
   if (existing.data()?.calculationVersion === 2) return;
   const history = await getDocsFromServer(query(collection(db, COL), where('userId', '==', userId)));
   await runTransaction(db, async (tx) => {
     const current = await tx.get(ref);
     if (current.data()?.calculationVersion === 2) return;
     const settings = (await tx.get(doc(db, 'settings', 'general'))).data();
+    const profile = (await tx.get(doc(db, 'users', userId))).data();
     const snapshots = await Promise.all(history.docs.map((item) => tx.get(item.ref)));
     const leaves = snapshots.filter((item) => item.exists()).map((item) => ({ id: item.id, ...item.data() } as Leave));
     const effective = resolveLeaveBalances(settings?.leaveTypes ?? DEFAULT_LEAVE_TYPES,
-      current.exists() ? current.data() as LeaveBalance : null, {}, leaves, year);
+      current.exists() ? current.data() as LeaveBalance : null, {}, leaves, year, profile?.joinedOn);
     tx.set(ref, { userId, year, ...effective, calculationVersion: 2 }, { merge: true });
   });
 }
@@ -201,6 +221,7 @@ async function ensureVerifiedBalance(userId: string, year: number): Promise<void
 // ─── Actions (atomic where balances change) ────────────────────
 
 export interface ApplyLeaveParams {
+  halfDay?: boolean;
   userId: string;
   leaveType: string; // "CL", "SL", etc.
   fromDate: string; // YYYY-MM-DD
@@ -221,14 +242,26 @@ export async function applyLeave(params: ApplyLeaveParams): Promise<string> {
     throw new Error('End date cannot be before start date');
   }
 
-  const days = daysBetween(fromDate, toDate);
+  if (userId !== authUser.uid) throw new Error('You can only apply for your own leave');
+  if (params.halfDay && fromDate !== toDate) throw new Error('Half-day leave must use one date');
+  const days = params.halfDay ? 0.5 : daysBetween(fromDate, toDate);
   const settings = await getAttendanceSettings();
   const policy = settings.leaveTypes.find((type) => type.code === leaveType);
   if (!policy) throw new Error('This leave type is no longer available');
-  if (days < 1 || fromDate.slice(0, 4) !== toDate.slice(0, 4)) throw new Error('Choose dates within the same calendar year');
+  if (days < 0.5 || fromDate.slice(0, 4) !== toDate.slice(0, 4)) throw new Error('Choose dates within the same calendar year');
   if (days > (policy.maxDaysPerApplication ?? 3)) throw new Error(`Maximum ${policy.maxDaysPerApplication ?? 3} days per application`);
+  const profile = (await getDocFromServer(doc(db, 'users', userId))).data() as AppUser;
+  if (!profile?.active || !(profile.role === 'super_admin' || hasPermission(profile.permissions, 'leaves.applyOwn'))) throw new Error('Leave application is not permitted');
+  const year = Number(fromDate.slice(0, 4));
+  const historySnap = await getDocsFromServer(query(collection(db, COL), where('userId', '==', userId)));
+  const history = historySnap.docs.map((item) => ({ id: item.id, ...item.data() } as Leave));
+  const savedBalance = await getDocFromServer(doc(db, BAL_COL, balanceId(userId, year)));
+  const effective = resolveLeaveBalances(settings.leaveTypes, savedBalance.exists() ? savedBalance.data() as LeaveBalance : null, {}, history, year, profile.joinedOn);
+  const reserved = history.filter((l) => l.status === 'pending' && l.leaveType === leaveType && Number(l.fromDate.slice(0, 4)) === year).reduce((sum, l) => sum + l.days, 0);
+  if ((effective.balances[leaveType] ?? 0) - reserved < days) throw new Error('Insufficient accrued balance after pending requests');
   const payload: Omit<Leave, 'id'> = {
     userId,
+    halfDay: params.halfDay === true,
     leaveType,
     fromDate,
     toDate,
@@ -277,6 +310,7 @@ export async function approveLeave(
     const leaveSnap = await tx.get(leaveRef);
     if (!leaveSnap.exists()) throw new Error('Leave not found');
     const leave = leaveSnap.data() as Leave;
+    const target = await assertLeaveAction(tx, leave.userId, 'leaves.approve');
     if (leave.status !== 'pending') {
       throw new Error(`Leave already ${leave.status}`);
     }
@@ -289,7 +323,7 @@ export async function approveLeave(
     const settings = settingsSnap.data();
     const types = settings?.leaveTypes ?? DEFAULT_LEAVE_TYPES;
     if (!types.some((type: { code: string }) => type.code === leave.leaveType)) throw new Error('This leave type is no longer available');
-    const effective = resolveLeaveBalances(types, balSnap.exists() ? balSnap.data() as LeaveBalance : null, settings?.leaveAllowanceBaselines);
+    const effective = resolveLeaveBalances(types, balSnap.exists() ? balSnap.data() as LeaveBalance : null, settings?.leaveAllowanceBaselines, [], year, target.joinedOn);
     const currentBalances = effective.balances;
     const availableForType = currentBalances[leave.leaveType] ?? 0;
 
@@ -346,6 +380,7 @@ export async function rejectLeave(
     const snap = await tx.get(leaveRef);
     if (!snap.exists()) throw new Error('Leave not found');
     const leave = snap.data() as Leave;
+    await assertLeaveAction(tx, leave.userId, 'leaves.approve');
     if (leave.status !== 'pending') {
       throw new Error(`Leave already ${leave.status}`);
     }
@@ -382,12 +417,17 @@ export async function cancelLeave(leaveId: string): Promise<void> {
 
   const source = await getDocFromServer(leaveRef);
   if (!source.exists()) throw new Error('Leave not found');
-  await ensureVerifiedBalance(source.data().userId, Number(source.data().fromDate.slice(0, 4)));
-
   await runTransaction(db, async (tx) => {
     const snap = await tx.get(leaveRef);
     if (!snap.exists()) throw new Error('Leave not found');
     const leave = snap.data() as Leave;
+
+    const target = (await tx.get(doc(db, 'users', leave.userId))).data() as AppUser;
+    if (leave.userId !== authUser.uid) await assertLeaveAction(tx, leave.userId, 'leaves.approve');
+    else {
+      const actor = target;
+      if (!actor.active || !(actor.role === 'super_admin' || hasPermission(actor.permissions, 'leaves.cancelOwn'))) throw new Error('Leave cancellation is not allowed');
+    }
 
     if (leave.status === 'cancelled') throw new Error('Already cancelled');
     if (leave.status === 'rejected') throw new Error('Cannot cancel rejected leave');
@@ -397,18 +437,11 @@ export async function cancelLeave(leaveId: string): Promise<void> {
       const year = new Date(leave.fromDate).getFullYear();
       const balRef = doc(db, BAL_COL, balanceId(leave.userId, year));
       const balSnap = await tx.get(balRef);
-      const settingsSnap = await tx.get(doc(db, 'settings', 'general'));
-      const settings = settingsSnap.data();
-      const effective = resolveLeaveBalances(settings?.leaveTypes ?? DEFAULT_LEAVE_TYPES, balSnap.exists() ? balSnap.data() as LeaveBalance : null, settings?.leaveAllowanceBaselines);
-      const currentBalances = effective.balances;
-      const newBalances: LeaveBalanceMap = {
-        ...currentBalances,
-        [leave.leaveType]: (currentBalances[leave.leaveType] ?? 0) + leave.days,
-      };
-      if (balSnap.exists()) {
-        tx.update(balRef, { balances: newBalances, allowances: effective.allowances });
-      } else {
-        tx.set(balRef, { userId: leave.userId, year, balances: newBalances, allowances: effective.allowances });
+      // Keep the stored accrual baseline; the resolver adds newly earned credit.
+      // Legacy records reconstruct usage from leave status, so need no stored refund.
+      if (balSnap.data()?.calculationVersion === 2) {
+        const currentBalances = balSnap.data()!.balances as LeaveBalanceMap;
+        tx.update(balRef, { balances: { ...currentBalances, [leave.leaveType]: (currentBalances[leave.leaveType] ?? 0) + leave.days }, lastLeaveId: leaveId });
       }
       refundInfo = { leaveType: leave.leaveType, days: leave.days, userId: leave.userId };
     }
@@ -449,9 +482,10 @@ export async function adjustBalance(
 
   await runTransaction(db, async (tx) => {
     const snap = await tx.get(balRef);
+    const target = await assertLeaveAction(tx, userId, 'leaves.approve');
     const settingsSnap = await tx.get(doc(db, 'settings', 'general'));
     const settings = settingsSnap.data();
-    const effective = resolveLeaveBalances(settings?.leaveTypes ?? DEFAULT_LEAVE_TYPES, snap.exists() ? snap.data() as LeaveBalance : null, settings?.leaveAllowanceBaselines);
+    const effective = resolveLeaveBalances(settings?.leaveTypes ?? DEFAULT_LEAVE_TYPES, snap.exists() ? snap.data() as LeaveBalance : null, settings?.leaveAllowanceBaselines, [], year, target.joinedOn);
     const currentBalances = effective.balances;
     const newBalances: LeaveBalanceMap = {
       ...currentBalances,

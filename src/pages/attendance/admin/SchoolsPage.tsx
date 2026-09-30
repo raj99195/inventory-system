@@ -25,6 +25,9 @@ export default function SchoolsPage() {
   const { can } = usePermission();
   const { schools, loading, error } = useSchools();
   const [query, setQuery] = useState('');
+  const [state, setState] = useState('');
+  const [city, setCity] = useState('');
+  const [status, setStatus] = useState('');
 
   const canCreate = can('schools.create');
   const canEdit = can('schools.edit');
@@ -36,19 +39,19 @@ export default function SchoolsPage() {
     if (!schools) return [];
     if (isAdminLevel) return schools;
     const assigned = new Set<string>(user?.assignedSchools || []);
-    return schools.filter((s) => assigned.has(s.id));
+    return schools.filter((s) => s.active && assigned.has(s.id));
   }, [schools, isAdminLevel, user?.assignedSchools]);
 
   // Search filter
   const filtered = useMemo(() => {
-    if (!query.trim()) return visibleSchools;
+    if (!isAdminLevel) return visibleSchools;
     const q = query.toLowerCase();
     return visibleSchools.filter(
-      (s) =>
-        (s.name || '').toLowerCase().includes(q)
-        || (s.address || '').toLowerCase().includes(q)
+      (s) => (!state || s.state === state) && (!city || s.city === city)
+        && (!status || (status === 'active' ? s.active : !s.active))
+        && [s.name, s.address, s.city, s.state].some((v) => (v ?? '').toLowerCase().includes(q))
     );
-  }, [visibleSchools, query]);
+  }, [visibleSchools, query, state, city, status, isAdminLevel]);
 
   if (!can('schools.view')) return <NoAccessPage />;
   if (error) return <p role="alert">Unable to load schools: {error.message}</p>;
@@ -87,7 +90,7 @@ export default function SchoolsPage() {
       </div>
 
       {/* Search */}
-      <div className="card !p-3">
+      {isAdminLevel && <div className="card !p-3">
         <div className="flex items-center gap-2 px-3">
           <Search size={18} className="text-brand-choco/40" />
           <input
@@ -97,9 +100,15 @@ export default function SchoolsPage() {
             className="flex-1 py-2 outline-none bg-transparent text-brand-choco placeholder:text-brand-choco/40"
           />
         </div>
-      </div>
+      </div>}
 
       {/* Empty states */}
+      {isAdminLevel && <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+        <select aria-label="Filter state" className="input-field" value={state} onChange={(e) => { setState(e.target.value); setCity(''); }}><option value="">All states</option>{[...new Set(visibleSchools.map((s) => s.state).filter(Boolean))].sort().map((s) => <option key={s}>{s}</option>)}</select>
+        <select aria-label="Filter city" className="input-field" value={city} onChange={(e) => setCity(e.target.value)}><option value="">All cities</option>{[...new Set(visibleSchools.filter((s) => !state || s.state === state).map((s) => s.city).filter(Boolean))].sort().map((s) => <option key={s}>{s}</option>)}</select>
+        <select aria-label="Filter school status" className="input-field" value={status} onChange={(e) => setStatus(e.target.value)}><option value="">All statuses</option><option value="active">Active</option><option value="inactive">Inactive</option></select>
+        <button className="btn-secondary" onClick={() => { setQuery(''); setState(''); setCity(''); setStatus(''); }}>Clear filters</button>
+      </div>}
       {filtered.length === 0 && (
         <div className="bg-white rounded-xl border border-brand-choco/10 p-12 text-center">
           <SchoolIcon size={48} className="mx-auto text-brand-choco/20 mb-3" />
@@ -110,7 +119,7 @@ export default function SchoolsPage() {
                 Contact your administrator to assign a school for attendance.
               </p>
             </>
-          ) : query ? (
+          ) : isAdminLevel && (query || state || city || status) ? (
             <>
               <p className="text-brand-choco font-medium">No matching schools</p>
               <p className="text-sm text-brand-choco/60 mt-1">No schools found for "{query}".</p>
@@ -133,7 +142,7 @@ export default function SchoolsPage() {
 
       {/* Grid */}
       {filtered.length > 0 && (
-        <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 2xl:grid-cols-3 gap-3">
           {filtered.map((s) => (
             <SchoolCard
               key={s.id}
@@ -164,12 +173,13 @@ function SchoolCard({
       : null;
 
   return (
-    <div className="card !p-5 sm:!p-6">
+    <div className="card !p-3 sm:!p-4 text-sm">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
           <h3 className="font-sans text-base font-bold text-brand-choco break-words">
             {school.name || '(unnamed)'}
           </h3>
+          <p className="text-xs text-brand-choco/60 mt-1">{[school.city, school.state].filter(Boolean).join(', ')} · {school.active ? 'Active' : 'Inactive'}</p>
           {school.address && (
             <p className="text-sm text-brand-choco/60 mt-1 line-clamp-2">
               {school.address}
@@ -198,7 +208,7 @@ function SchoolCard({
         )}
       </div>
 
-      <div className="grid grid-cols-3 gap-3 mt-4 pt-4 border-t border-brand-choco/5">
+      <div className="grid grid-cols-3 gap-2 mt-2 pt-2 border-t border-brand-choco/5">
         <div>
           <p className="text-[10px] font-semibold text-brand-choco/50 uppercase tracking-wide">
             In
@@ -222,7 +232,7 @@ function SchoolCard({
       </div>
 
       {workingDays.length > 0 && (
-        <div className="mt-4">
+        <div className="mt-2">
           <p className="text-[10px] font-semibold text-brand-choco/50 uppercase tracking-wide mb-1.5">
             Working Days
           </p>
@@ -251,7 +261,7 @@ function SchoolCard({
           href={mapsUrl}
           target="_blank"
           rel="noreferrer"
-          className="mt-4 inline-flex items-center gap-1.5 text-sm text-brand-orange hover:underline"
+          className="mt-2 inline-flex items-center gap-1.5 text-xs text-brand-orange hover:underline"
         >
           <MapPin size={14} />
           View on Google Maps

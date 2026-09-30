@@ -10,6 +10,7 @@ import {
   serverTimestamp,
   runTransaction,
   limit,
+  type Transaction,
 } from 'firebase/firestore';
 import { db, auth } from '@/lib/firebase';
 import type {
@@ -18,10 +19,22 @@ import type {
   RequestUrgency,
   Asset,
   Product,
+  AppUser,
 } from '@/types';
 import { logAudit } from '@/lib/audit';
+import { canActOnUser, hasPermission } from '@/lib/permissions';
 
 const COL = 'requests';
+async function assertRequestReview(tx: Transaction, userId: string): Promise<void> {
+  const actorId = auth.currentUser?.uid;
+  if (!actorId) throw new Error('Not authenticated');
+  const actorSnap = await tx.get(doc(db, 'users', actorId));
+  const targetSnap = await tx.get(doc(db, 'users', userId));
+  if (!actorSnap.exists() || !targetSnap.exists()) throw new Error('User profile not found');
+  const actor = { ...actorSnap.data(), uid: actorId } as AppUser;
+  const target = { ...targetSnap.data(), uid: userId } as AppUser;
+  if (!canActOnUser(actor, target) || !(actor.role === 'super_admin' || hasPermission(actor.permissions, 'requests.approve'))) throw new Error('You can only approve requests from users below your role');
+}
 
 // ─── Hooks ─────────────────────────────────────────────────────
 
@@ -220,6 +233,7 @@ export async function approveRequest(
     const snap = await tx.get(requestRef);
     if (!snap.exists()) throw new Error('Request not found');
     const req = snap.data() as AssetRequest;
+    await assertRequestReview(tx, req.userId);
     if (req.status !== 'pending') {
       throw new Error(`Request already ${req.status}`);
     }
@@ -356,6 +370,7 @@ export async function rejectRequest(
     const snap = await tx.get(requestRef);
     if (!snap.exists()) throw new Error('Request not found');
     const req = snap.data() as AssetRequest;
+    await assertRequestReview(tx, req.userId);
     if (req.status !== 'pending') {
       throw new Error(`Request already ${req.status}`);
     }

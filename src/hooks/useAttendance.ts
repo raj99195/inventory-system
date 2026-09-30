@@ -22,6 +22,7 @@ import type {
   LocationType,
 } from '@/types';
 import { logAudit } from '@/lib/audit';
+import { canActOnUser, hasPermission } from '@/lib/permissions';
 import { distanceMeters } from '@/lib/attendance/geocode';
 import { isWorkingDay, dateKey, todayKey, workingMinutes as calcWorkingMinutes } from '@/lib/attendance/datetime';
 
@@ -391,7 +392,22 @@ export async function adminEditAttendance(
   patch: Partial<AttendanceRecord>,
   previousValue: Partial<AttendanceRecord>
 ): Promise<void> {
-  await updateDoc(doc(db, COL, id), patch);
+  const actorId = auth.currentUser?.uid;
+  if (!actorId) throw new Error('Not authenticated');
+  await runTransaction(db, async (tx) => {
+    const recordRef = doc(db, COL, id);
+    const record = await tx.get(recordRef);
+    if (!record.exists()) throw new Error('Attendance record not found');
+    const actorSnap = await tx.get(doc(db, 'users', actorId));
+    const targetId = record.data().userId;
+    const targetSnap = await tx.get(doc(db, 'users', targetId));
+    if (!actorSnap.exists() || !targetSnap.exists()) throw new Error('User profile not found');
+    const actor = { ...actorSnap.data(), uid: actorId } as AppUser;
+    const target = { ...targetSnap.data(), uid: targetId } as AppUser;
+    if (!canActOnUser(actor, target) || !(actor.role === 'super_admin' || hasPermission(actor.permissions, 'attendance.editAll'))) throw new Error('You can only edit attendance for users below your role');
+    if (patch.userId && patch.userId !== targetId) throw new Error('Cannot change the attendance owner');
+    tx.update(recordRef, patch);
+  });
   await logAudit({
     module: 'attendance',
     action: 'admin-edit',

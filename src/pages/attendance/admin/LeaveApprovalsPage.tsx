@@ -11,6 +11,8 @@ import { useAttendanceSettings } from '@/hooks/useAttendanceSettings';
 import { fmtDate, fmtDateTime } from '@/lib/attendance/datetime';
 import { cn } from '@/lib/utils';
 import type { Leave, LeaveStatus } from '@/types';
+import { useAuth } from '@/contexts/AuthContext';
+import { canActOnUser } from '@/lib/permissions';
 
 const STATUS_META: Record<LeaveStatus, { label: string; className: string }> = {
   pending: { label: 'Pending', className: 'bg-pastel-peach text-orange-800' },
@@ -20,6 +22,7 @@ const STATUS_META: Record<LeaveStatus, { label: string; className: string }> = {
 };
 
 export default function LeaveApprovalsPage() {
+  const { userDoc } = useAuth();
   const { can } = usePermission();
   const { leaves, loading } = useAllLeaves(500);
   const { users } = useUsers();
@@ -28,16 +31,17 @@ export default function LeaveApprovalsPage() {
   const [tab, setTab] = useState<LeaveStatus>('pending');
   const [decide, setDecide] = useState<{ leave: Leave; action: 'approve' | 'reject' } | null>(null);
 
+  const userMap = useMemo(() => new Map(users.map((u) => [u.uid, u])), [users]);
   if (!can('leaves.viewAll')) {
     return <Navigate to="/" replace />;
   }
 
-  const userMap = useMemo(() => new Map(users.map((u) => [u.uid, u])), [users]);
   const typeName = (code: string) =>
     settings.leaveTypes?.find((t) => t.code === code)?.name ?? code;
 
-  const filtered = leaves.filter((l) => l.status === tab);
-  const counts = leaves.reduce<Record<string, number>>((a, l) => {
+  const visible = leaves.filter((l) => canActOnUser(userDoc, userMap.get(l.userId)));
+  const filtered = visible.filter((l) => l.status === tab);
+  const counts = visible.reduce<Record<string, number>>((a, l) => {
     a[l.status] = (a[l.status] || 0) + 1;
     return a;
   }, {});

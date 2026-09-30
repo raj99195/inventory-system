@@ -452,6 +452,7 @@ export type LeaveCode = 'CL' | 'SL' | 'EL' | 'ML' | 'PL' | 'CO' | 'BL' | 'LOP';
 export type LeaveStatus = 'pending' | 'approved' | 'rejected' | 'cancelled';
 
 export interface Leave {
+  halfDay?: boolean;
   id: string;
   userId: string;
   leaveType: LeaveCode | string;
@@ -500,6 +501,8 @@ export interface LeaveTypeConfig {
 export type WorkingDay = 'MO' | 'TU' | 'WE' | 'TH' | 'FR' | 'SA' | 'SU';
 
 export interface School {
+  city?: string;
+  state?: string;
   id: string;
   name: string;
   inTime: string;
@@ -516,6 +519,7 @@ export interface School {
 
 // ==================== ATTENDANCE SETTINGS ====================
 export interface AttendanceSettings {
+  // 4 represents the last Saturday, whether it is the fourth or fifth occurrence.
   saturdayOffWeeks?: number[];
   leaveAllowanceBaselines?: LeaveBalanceMap;
   id: 'general';

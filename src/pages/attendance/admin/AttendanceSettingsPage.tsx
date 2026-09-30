@@ -127,9 +127,9 @@ export default function AttendanceSettingsPage() {
 
       <section className="card !p-5 sm:!p-6 space-y-4">
         <div><h2 className="font-display text-xl font-bold">Office Saturday Off</h2>
-          <p className="text-sm text-brand-choco-soft mt-1">Choose which Saturdays are off every month. For example, select 2nd and 4th.</p></div>
+          <p className="text-sm text-brand-choco-soft mt-1">Choose Saturdays off. Last Saturday automatically follows months with four or five Saturdays.</p></div>
         <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
-          {['1st', '2nd', '3rd', '4th', '5th'].map((label, index) => {
+          {['1st', '2nd', '3rd', 'Last', '5th'].map((label, index) => {
             const week = index + 1;
             const selected = (form.saturdayOffWeeks ?? []).includes(week);
             return <label key={week} className={`flex items-center gap-2 p-3 rounded-2xl border text-sm font-semibold ${selected ? 'border-brand-orange bg-brand-orange-50' : 'border-brand-choco/10'} ${!canEdit || !form.workingDays.includes('SA') ? 'opacity-50' : 'cursor-pointer'}`}>
@@ -139,13 +139,13 @@ export default function AttendanceSettingsPage() {
             </label>;
           })}
         </div>
-        <p className="text-xs text-brand-choco-soft">{form.workingDays.includes('SA') ? 'Unselected Saturdays are working days. The 5th applies only in months with five Saturdays. School schedules stay separate.' : 'Saturday is disabled under Working Days, so all Saturdays are off. Enable it to choose specific Saturdays.'}</p>
+        <p className="text-xs text-brand-choco-soft">{form.workingDays.includes('SA') ? 'Last means the final Saturday of the month, whether it is the 4th or 5th. School schedules stay separate.' : 'Saturday is disabled under Working Days, so all Saturdays are off.'}</p>
       </section>
 
       <section className="card !p-5 sm:!p-6 space-y-5">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div><h2 className="font-display text-xl font-bold">Leave Types &amp; Allowances</h2>
-            <p className="text-sm text-brand-choco-soft mt-1">Set the yearly allowance and maximum days for each application.</p></div>
+            <p className="text-sm text-brand-choco-soft mt-1">CL, SL and EL each earn 0.5 day monthly after joining: 6 each, 18 total per full calendar year.</p></div>
           {canEdit && <button type="button" className="btn-secondary text-sm" onClick={() => setForm({ ...form, leaveTypes: [...form.leaveTypes, { code: '', name: '', default: 0, colorHex: '#F97316', maxDaysPerApplication: 3 }] })}><Plus size={16} />Add Leave Type</button>}
         </div>
         <p className="text-xs text-brand-choco-soft rounded-2xl bg-brand-cream-dark/50 p-3">Leave types and yearly allowances apply to all users. Remaining days update with the policy while preserving leave already used and manual adjustments. Zero means no automatic allowance, including Loss of Pay.</p>
@@ -154,7 +154,7 @@ export default function AttendanceSettingsPage() {
             <div className="grid grid-cols-2 lg:grid-cols-12 gap-3 items-end">
               <label className="text-xs font-semibold lg:col-span-2">Code<input aria-label={`Leave code ${index + 1}`} className="input-field mt-1" value={type.code} disabled={!canEdit || settings.leaveTypes.some((saved) => saved.code === type.code)} onChange={(e) => updateLeaveType(index, { code: e.target.value.toUpperCase().trim() })} /></label>
               <label className="text-xs font-semibold col-span-2 lg:col-span-4">Leave name<input className="input-field mt-1" value={type.name} disabled={!canEdit} onChange={(e) => updateLeaveType(index, { name: e.target.value })} /></label>
-              <label className="text-xs font-semibold lg:col-span-2">Days / year<input type="number" min="0" step="0.5" className="input-field mt-1" value={type.default} disabled={!canEdit} onChange={(e) => updateLeaveType(index, { default: Number(e.target.value) })} /></label>
+              <label className="text-xs font-semibold lg:col-span-2">Days / year<input type="number" min="0" step="0.5" className="input-field mt-1" value={type.default} disabled={!canEdit || ['CL', 'SL', 'EL'].includes(type.code)} onChange={(e) => updateLeaveType(index, { default: Number(e.target.value) })} /></label>
               <label className="text-xs font-semibold lg:col-span-2">Max / application<input type="number" min="1" max="366" step="1" className="input-field mt-1" value={type.maxDaysPerApplication ?? 3} disabled={!canEdit} onChange={(e) => updateLeaveType(index, { maxDaysPerApplication: Number(e.target.value) })} /></label>
               <label className="text-xs font-semibold">Color<input type="color" className="block w-10 h-11 mt-1 rounded-lg" value={type.colorHex} disabled={!canEdit} onChange={(e) => updateLeaveType(index, { colorHex: e.target.value })} /></label>
               {canEdit && <button type="button" aria-label={`Remove ${type.name || 'leave type'}`} className="w-11 h-11 rounded-xl text-red-600 hover:bg-red-50" onClick={() => { if (window.confirm('Remove this leave type from new applications? Existing leave records and balances will be kept.')) setForm({ ...form, leaveTypes: form.leaveTypes.filter((_, i) => i !== index) }); }}><Trash2 size={18} className="mx-auto" /></button>}

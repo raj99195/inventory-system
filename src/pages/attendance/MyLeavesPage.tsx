@@ -1,4 +1,4 @@
-import { Link, Navigate } from 'react-router-dom';
+import { Link, Navigate, useNavigate } from 'react-router-dom';
 import { Plus, Loader2, FileText, X } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useAuth } from '@/contexts/AuthContext';
@@ -18,6 +18,7 @@ const STATUS_META: Record<LeaveStatus, { label: string; className: string }> = {
 };
 
 export default function MyLeavesPage() {
+  const navigate = useNavigate();
   const { userDoc } = useAuth();
   const { can } = usePermission();
   const uid = userDoc?.uid ?? null;
@@ -76,7 +77,7 @@ export default function MyLeavesPage() {
           icon={FileText}
           title="No leaves yet"
           description="You haven't applied for any leaves."
-          action={canApply ? { label: 'Apply Leave', icon: Plus, onClick: () => {} } : undefined}
+          action={canApply ? { label: 'Apply Leave', icon: Plus, onClick: () => navigate('/attendance/apply-leave') } : undefined}
         />
       ) : (
         <div className="space-y-2">

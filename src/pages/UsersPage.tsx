@@ -14,6 +14,7 @@ import {
   UserCheck,
   ShieldCheck,
   Mail,
+  Copy,
   Building,
   School as SchoolIcon,
 } from 'lucide-react';
@@ -25,17 +26,18 @@ import UserForm from '@/components/users/UserForm';
 import { useUsers, deleteUser, toggleUserActive } from '@/hooks/useUsers';
 import { usePermission } from '@/hooks/usePermission';
 import { useAuth } from '@/contexts/AuthContext';
-import { ROLE_LABELS, canManageUser, myLevel } from '@/lib/permissions';
+import { ROLE_LABELS, canManageUser, myLevel, roleLevel } from '@/lib/permissions';
 import type { AppUser, AppRole } from '@/types';
 import { cn, formatDate } from '@/lib/utils';
 
 type RoleFilter = 'all' | AppRole;
 
 export default function UsersPage() {
-  const { users, loading } = useUsers();
-  const { can, isSuperAdmin } = usePermission();
+  const { users: allUsers, loading } = useUsers();
+  const { can } = usePermission();
   const { user: currentUser, userDoc } = useAuth();
   const myLvl = myLevel(userDoc);
+  const users = useMemo(() => allUsers.filter((u) => u.uid === userDoc?.uid || roleLevel(u.role) < myLvl), [allUsers, userDoc?.uid, myLvl]);
   const location = useLocation();
   const navigate = useNavigate();
 
@@ -55,10 +57,6 @@ export default function UsersPage() {
       navigate(location.pathname, { replace: true, state: {} });
     }
   }, [location.state, location.pathname, navigate, can]);
-
-  if (!can('users.view')) {
-    return <Navigate to="/" replace />;
-  }
 
   const filtered = useMemo(() => {
     return users.filter((u) => {
@@ -84,7 +82,7 @@ export default function UsersPage() {
 
   const handleEdit = (u: AppUser) => {
     // Anti-escalation: cannot edit peer/higher, but can edit self
-    if (u.uid !== currentUser?.uid && !canManageUser(myLvl, u)) {
+    if (u.uid === currentUser?.uid || !canManageUser(myLvl, u)) {
       return toast.error("You can't edit a user at your level or above");
     }
     setSelected(u);
@@ -144,6 +142,7 @@ export default function UsersPage() {
     ['custom', 'Custom'],
   ];
 
+  if (!can('users.view') && !can('users.create')) return <Navigate to="/" replace />;
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
@@ -193,7 +192,7 @@ export default function UsersPage() {
         </div>
 
         <div className="flex items-center gap-1 p-1 rounded-full bg-brand-cream-dark overflow-x-auto">
-          {roleFilterOptions.map(([val, label]) => (
+          {roleFilterOptions.filter(([val]) => val === 'all' || roleLevel(val as AppRole) < myLvl || val === userDoc?.role).map(([val, label]) => (
             <button
               key={val}
               onClick={() => setRoleFilter(val)}
@@ -245,8 +244,8 @@ export default function UsersPage() {
                   key={u.uid}
                   user={u}
                   isSelf={isSelf}
-                  canEdit={(isSelf || canManage) && can('users.edit')}
-                  canDelete={can('users.delete') && !isSelf && (canManage || isSuperAdmin)}
+                  canEdit={!isSelf && canManage && can('users.edit')}
+                  canDelete={can('users.delete') && !isSelf && canManage}
                   canToggle={can('users.edit') && !isSelf && canManage}
                   onEdit={handleEdit}
                   onDelete={setDeleting}
@@ -419,7 +418,8 @@ function UserCard({
           </div>
           <p className="text-xs text-brand-choco-soft truncate flex items-center gap-1">
             <Mail className="w-3 h-3" />
-            {user.email}
+            <span className="min-w-0 truncate">{user.email}</span>
+            <button type="button" aria-label={`Copy email for ${user.name}`} className="ml-1 w-8 h-8 shrink-0 inline-flex items-center justify-center rounded-lg hover:bg-brand-orange-50 hover:text-brand-orange" onClick={() => { void navigator.clipboard.writeText(user.email).then(() => toast.success('Email copied'), () => toast.error('Could not copy email')); }}><Copy size={14} /></button>
           </p>
           {user.designation && (
             <p className="text-[11px] text-brand-choco-soft truncate mt-0.5">

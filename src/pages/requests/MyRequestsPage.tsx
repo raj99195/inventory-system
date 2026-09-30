@@ -1,4 +1,4 @@
-import { Link, Navigate } from 'react-router-dom';
+import { Link, Navigate, useNavigate } from 'react-router-dom';
 import {
   Plus,
   Loader2,
@@ -35,6 +35,7 @@ const ITEM_META: Record<RequestItemType, { icon: React.ComponentType<{ className
 };
 
 export default function MyRequestsPage() {
+  const navigate = useNavigate();
   const { userDoc } = useAuth();
   const { can } = usePermission();
   const uid = userDoc?.uid ?? null;
@@ -87,7 +88,7 @@ export default function MyRequestsPage() {
           icon={Send}
           title="No requests yet"
           description="You haven't requested any assets or products."
-          action={canCreate ? { label: 'New Request', icon: Plus, onClick: () => {} } : undefined}
+          action={canCreate ? { label: 'New Request', icon: Plus, onClick: () => navigate('/requests/new') } : undefined}
         />
       ) : (
         <div className="space-y-2">

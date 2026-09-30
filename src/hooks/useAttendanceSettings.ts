@@ -11,7 +11,7 @@ import {
 } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import type { AttendanceSettings } from '@/types';
-import { DEFAULT_LEAVE_TYPES, validateLeaveTypes } from '@/lib/attendance/leaveTypes';
+import { DEFAULT_LEAVE_TYPES, validateLeaveTypes, normalizeMonthlyLeaveTypes } from '@/lib/attendance/leaveTypes';
 import { logAudit } from '@/lib/audit';
 
 const COL = 'settings';
@@ -69,6 +69,7 @@ export function useAttendanceSettings() {
       serverReceived = true;
       const stored = snap.exists() ? snap.data() as Partial<AttendanceSettings> : {};
       setSettings({ ...DEFAULT_ATTENDANCE_SETTINGS, ...stored,
+        leaveTypes: normalizeMonthlyLeaveTypes(stored.leaveTypes ?? DEFAULT_LEAVE_TYPES),
         orgGeofence: { ...DEFAULT_ATTENDANCE_SETTINGS.orgGeofence, ...stored.orgGeofence }, id: 'general' });
       setHasDoc(snap.exists());
       setError(null);
@@ -97,6 +98,7 @@ export async function getAttendanceSettings(): Promise<AttendanceSettings> {
   return {
     ...DEFAULT_ATTENDANCE_SETTINGS,
     ...(snap.data() as Partial<AttendanceSettings>),
+    leaveTypes: normalizeMonthlyLeaveTypes(snap.data().leaveTypes ?? DEFAULT_LEAVE_TYPES),
     id: 'general',
   };
 }
@@ -109,10 +111,12 @@ export async function saveAttendanceSettings(
   patch: Partial<AttendanceSettings>,
   previousValue?: Partial<AttendanceSettings>
 ): Promise<void> {
-  if (patch.saturdayOffWeeks && patch.saturdayOffWeeks.some((week) => !Number.isInteger(week) || week < 1 || week > 5)) throw new Error('Saturday off must be between 1st and 5th.');
+  if (patch.saturdayOffWeeks && patch.saturdayOffWeeks.some((week) => !Number.isInteger(week) || week < 1 || week > 6)) throw new Error('Invalid Saturday off selection.');
   if (patch.leaveTypes) {
-    const error = validateLeaveTypes(patch.leaveTypes);
+    const leaveTypes = normalizeMonthlyLeaveTypes(patch.leaveTypes);
+    const error = validateLeaveTypes(leaveTypes);
     if (error) throw new Error(error);
+    patch = { ...patch, leaveTypes };
   }
   const ref = doc(db, COL, DOC_ID);
   let existed = false;

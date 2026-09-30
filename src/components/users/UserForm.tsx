@@ -30,6 +30,7 @@ import {
   clonePermissions,
   getAssignableRoles,
   myLevel,
+  canActOnUser,
 } from '@/lib/permissions';
 import { createUser, updateUser } from '@/hooks/useUsers';
 import { useSchools } from '@/hooks/useSchools';
@@ -155,6 +156,7 @@ export default function UserForm({ user, onClose }: Props) {
   };
 
   const handleSubmit = async () => {
+    if (isEditing && !canActOnUser(userDoc, user)) return toast.error('You can only edit users below your role');
     const schema = isEditing ? baseSchema : createSchema;
     const result = schema.safeParse({
       name,

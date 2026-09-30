@@ -22,6 +22,9 @@ import {
 } from '@/hooks/useRequests';
 import { fmtDateTime } from '@/lib/attendance/datetime';
 import { cn } from '@/lib/utils';
+import { useAuth } from '@/contexts/AuthContext';
+import { useUsers } from '@/hooks/useUsers';
+import { canActOnUser } from '@/lib/permissions';
 import type {
   AssetRequest,
   RequestStatus,
@@ -43,15 +46,14 @@ const ITEM_META: Record<RequestItemType, { icon: React.ComponentType<{ className
 };
 
 export default function RequestApprovalsPage() {
+  const { userDoc } = useAuth();
+  const { users } = useUsers();
   const { can } = usePermission();
-  const { requests, loading } = useAllRequests(500);
+  const { requests: allRequests, loading } = useAllRequests(500);
+  const requests = useMemo(() => allRequests.filter((r) => canActOnUser(userDoc, users.find((u) => u.uid === r.userId))), [allRequests, users, userDoc]);
 
   const [tab, setTab] = useState<RequestStatus>('pending');
   const [decide, setDecide] = useState<{ req: AssetRequest; action: 'approve' | 'reject' } | null>(null);
-
-  if (!can('requests.viewAll')) {
-    return <Navigate to="/" replace />;
-  }
 
   const canApprove = can('requests.approve');
 
@@ -64,6 +66,7 @@ export default function RequestApprovalsPage() {
     }, {});
   }, [requests]);
 
+  if (!can('requests.viewAll')) return <Navigate to="/" replace />;
   return (
     <div className="space-y-6">
       <div>

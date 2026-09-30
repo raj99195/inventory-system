@@ -16,6 +16,7 @@ const AuditPage = lazy(() => import('./pages/AuditPage'));
 const UsersPage = lazy(() => import('./pages/UsersPage'));
 const NoAccessPage = lazy(() => import('./pages/NoAccessPage'));
 import LoadingScreen from './components/ui/LoadingScreen';
+import { hrmsHomePath } from '@/lib/permissions';
 const QuotationsPage = lazy(() => import('@/pages/QuotationsPage'));
 
 // ─── Attendance pages ─────────────────────────────────
@@ -46,8 +47,15 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
 }
 
 function DashboardEntry() {
+  const { userDoc } = useAuth();
+  return <Navigate to={hrmsHomePath(userDoc)} replace />;
+}
+
+function InventoryEntry() {
   const { can } = usePermission();
-  return can('dashboard.view') ? <DashboardPage /> : <Navigate to="/attendance" replace />;
+  if (can('dashboard.view')) return <DashboardPage />;
+  const target = [['products.view', '/products'], ['kits.view', '/kits'], ['stock.view', '/stock'], ['assets.view', '/assets'], ['requests.viewOwn', '/requests']].find(([permission]) => can(permission));
+  return target ? <Navigate to={target[1]} replace /> : <p>No Inventory access has been assigned to your role.</p>;
 }
 
 export default function App() {
@@ -63,6 +71,7 @@ export default function App() {
         }
       >
         <Route index element={<DashboardEntry />} />
+        <Route path="inventory" element={<InventoryEntry />} />
 
         {/* Inventory */}
         <Route path="products" element={<ProductsPage />} />

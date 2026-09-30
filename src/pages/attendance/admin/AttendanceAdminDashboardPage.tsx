@@ -16,31 +16,33 @@ import { useAllLeaves } from '@/hooks/useLeaves';
 import { useUsers } from '@/hooks/useUsers';
 import { fmtTime, minutesToHours, todayKey } from '@/lib/attendance/datetime';
 import { cn } from '@/lib/utils';
+import { useAuth } from '@/contexts/AuthContext';
+import { canActOnUser } from '@/lib/permissions';
 
 export default function AttendanceAdminDashboardPage() {
   const { can } = usePermission();
   const { records, loading: loadingRecs } = useAllAttendance(500);
   const { leaves, loading: loadingLeaves } = useAllLeaves(500);
-  const { users, loading: loadingUsers } = useUsers();
-
-  if (!can('attendance.viewAll')) {
-    return <Navigate to="/" replace />;
-  }
+  const { users: allUsers, loading: loadingUsers } = useUsers();
+  const { userDoc } = useAuth();
+  const users = useMemo(() => allUsers.filter((u) => canActOnUser(userDoc, u)), [allUsers, userDoc]);
 
   const loading = loadingRecs || loadingLeaves || loadingUsers;
   const today = todayKey();
   const active = users.filter((u) => u.active);
   const userMap = useMemo(() => new Map(users.map((u) => [u.uid, u])), [users]);
-  const todayRecs = useMemo(() => records.filter((r) => r.date === today), [records, today]);
+  const todayRecs = useMemo(() => records.filter((r) => r.date === today && userMap.has(r.userId)), [records, today, userMap]);
 
   const stats = useMemo(() => {
     const checkedIn = todayRecs.filter((r) => r.checkInAt).length;
     const checkedOut = todayRecs.filter((r) => r.checkOutAt).length;
     const late = todayRecs.filter((r) => r.isLate).length;
     const wfh = todayRecs.filter((r) => r.locationType === 'wfh').length;
-    const pendingLeaves = leaves.filter((l) => l.status === 'pending').length;
+    const pendingLeaves = leaves.filter((l) => l.status === 'pending' && userMap.has(l.userId)).length;
     return { checkedIn, checkedOut, late, wfh, pendingLeaves };
-  }, [todayRecs, leaves]);
+  }, [todayRecs, leaves, userMap]);
+
+  if (!can('attendance.viewAll')) return <Navigate to="/" replace />;
 
   if (loading) {
     return (

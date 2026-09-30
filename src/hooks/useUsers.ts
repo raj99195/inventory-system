@@ -9,14 +9,32 @@ import {
   updateDoc,
   deleteDoc,
   serverTimestamp,
+  getDocFromServer,
 } from 'firebase/firestore';
-import { db } from '@/lib/firebase';
+import { db, auth } from '@/lib/firebase';
 import { createAuthUser } from '@/lib/secondaryAuth';
 import { logAudit } from '@/lib/audit';
 import type { AppUser, AppRole, Permissions } from '@/types';
-import { getPresetForRole } from '@/lib/permissions';
+import { getPresetForRole, canActOnUser, canAssignRole, myLevel, hasPermission } from '@/lib/permissions';
 
 const COL = 'users';
+type ProfileFields = Pick<AppUser, 'phone' | 'department' | 'designation' | 'joinedOn' | 'assignedSchools' | 'officeAddress' | 'officeLat' | 'officeLng' | 'officeRadiusM'>;
+
+async function assertUserAction(permission: string, targetId?: string, nextRole?: AppRole) {
+  const actorId = auth.currentUser?.uid;
+  if (!actorId) throw new Error('Not authenticated');
+  const actorSnap = await getDocFromServer(doc(db, COL, actorId));
+  if (!actorSnap.exists()) throw new Error('User profile not found');
+  const actor = { ...actorSnap.data(), uid: actorId } as AppUser;
+  if (!actor?.active || !(actor.role === 'super_admin' || hasPermission(actor.permissions, permission))) throw new Error('Permission denied');
+  if (targetId) {
+    const targetSnap = await getDocFromServer(doc(db, COL, targetId));
+    if (!targetSnap.exists()) throw new Error('User profile not found');
+    const target = { ...targetSnap.data(), uid: targetId } as AppUser;
+    if (!canActOnUser(actor, target)) throw new Error('You can only manage users below your role');
+  }
+  if (nextRole && !(canAssignRole(myLevel(actor), nextRole) || (nextRole === 'custom' && actor.role === 'super_admin'))) throw new Error('Cannot assign this role');
+}
 
 export function useUsers() {
   const [users, setUsers] = useState<AppUser[]>([]);
@@ -46,7 +64,7 @@ export function useUsers() {
 }
 
 // ==================== CRUD ACTIONS ====================
-export async function createUser(input: {
+export async function createUser(input: ProfileFields & {
   name: string;
   email: string;
   password: string;
@@ -56,10 +74,12 @@ export async function createUser(input: {
   createdBy: string;
 }): Promise<string> {
   // 1. Create Firebase Auth user via secondary app (doesn't affect current session)
+  await assertUserAction('users.create', undefined, input.role);
   const uid = await createAuthUser(input.email, input.password);
 
   // 2. Create Firestore user doc with matching UID
   await setDoc(doc(db, COL, uid), {
+    ...Object.fromEntries(Object.entries(input).filter(([key, value]) => !['password', 'createdBy'].includes(key) && value !== undefined)),
     uid,
     email: input.email,
     name: input.name,
@@ -89,7 +109,7 @@ export async function createUser(input: {
 
 export async function updateUser(
   uid: string,
-  data: {
+  data: ProfileFields & {
     name?: string;
     role?: AppRole;
     permissions?: Permissions;
@@ -98,7 +118,8 @@ export async function updateUser(
   previousValue?: Partial<AppUser>
 ): Promise<void> {
   // Preserve the existing role unless a new role is explicitly provided.
-  const patch: Record<string, unknown> = { ...data, updatedAt: serverTimestamp() };
+  await assertUserAction('users.edit', uid, data.role);
+  const patch: Record<string, unknown> = { ...Object.fromEntries(Object.entries(data).filter(([, value]) => value !== undefined)), updatedAt: serverTimestamp() };
 
   await updateDoc(doc(db, COL, uid), patch);
 
@@ -113,6 +134,7 @@ export async function updateUser(
 }
 
 export async function deleteUser(user: AppUser): Promise<void> {
+  await assertUserAction('users.delete', user.uid);
   // Delete Firestore doc only. The Firebase Auth account remains but is
   // effectively locked out (no user doc → no permissions in this system).
   // Full Auth deletion needs the Admin SDK (Cloud Function / server).

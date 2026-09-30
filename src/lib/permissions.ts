@@ -328,7 +328,15 @@ export function getAssignableRoles(myLvl: number): Partial<Record<Exclude<AppRol
 
 export function canManageUser(myLvl: number, targetUser: AppUser | null | undefined): boolean {
   if (!targetUser) return false;
-  return canAssignRole(myLvl, targetUser.role);
+  return roleLevel(targetUser.role) < myLvl;
+}
+
+export function canActOnUser(actor: AppUser | null | undefined, target: AppUser | null | undefined): boolean {
+  return !!actor?.active && !!target && actor.uid !== target.uid && canManageUser(myLevel(actor), target);
+}
+
+export function hrmsHomePath(profile: AppUser | null | undefined): string {
+  return profile && ['super_admin', 'admin'].includes(profile.role) ? '/attendance/admin' : '/attendance';
 }
 
 export function containsLockedPerms(perms: Permissions): boolean {
@@ -355,8 +363,7 @@ export function homePathFor(profile: AppUser | null | undefined): string {
   if (!profile) return '/login';
   const perms = profile.permissions;
   if (!perms) return '/no-access';
-  if (hasPermission(perms, 'dashboard.view')) return '/dashboard';
-  if (hasPermission(perms, 'attendance.markOwn')) return '/attendance/mark';
+  if (hasPermission(perms, 'attendance.viewOwn') || hasPermission(perms, 'attendance.markOwn')) return hrmsHomePath(profile);
   if (hasPermission(perms, 'attendance.viewAll')) return '/attendance/admin/view';
   return '/no-access';
 }

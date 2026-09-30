@@ -6,15 +6,19 @@ import type { LeaveTypeConfig } from '@/types';
 
 /** Default leave types shipped with the app. Override via /settings/general. */
 export const DEFAULT_LEAVE_TYPES: LeaveTypeConfig[] = [
-  { code: 'CL', name: 'Casual Leave', default: 12, colorHex: '#F97316' },
-  { code: 'SL', name: 'Sick Leave', default: 12, colorHex: '#EF4444' },
-  { code: 'EL', name: 'Earned Leave', default: 18, colorHex: '#10B981' },
+  { code: 'CL', name: 'Casual Leave', default: 6, colorHex: '#F97316' },
+  { code: 'SL', name: 'Sick Leave', default: 6, colorHex: '#EF4444' },
+  { code: 'EL', name: 'Earned Leave', default: 6, colorHex: '#10B981' },
   { code: 'ML', name: 'Maternity Leave', default: 182, colorHex: '#EC4899' },
   { code: 'PL', name: 'Paternity Leave', default: 15, colorHex: '#3B82F6' },
   { code: 'CO', name: 'Comp-Off', default: 0, colorHex: '#8B5CF6' },
   { code: 'BL', name: 'Bereavement Leave', default: 5, colorHex: '#6B7280' },
   { code: 'LOP', name: 'Loss of Pay', default: 0, colorHex: '#DC2626' },
 ];
+
+export function normalizeMonthlyLeaveTypes(types: LeaveTypeConfig[]): LeaveTypeConfig[] {
+  return types.map((type) => ['CL', 'SL', 'EL'].includes(type.code) ? { ...type, default: 6 } : type);
+}
 
 /** Lookup label by leave code */
 export function leaveTypeLabel(

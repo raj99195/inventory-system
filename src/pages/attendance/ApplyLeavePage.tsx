@@ -23,6 +23,7 @@ export default function ApplyLeavePage() {
   const [from, setFrom] = useState<string>(todayKey());
   const [to, setTo] = useState<string>(todayKey());
   const [reason, setReason] = useState('');
+  const [halfDay, setHalfDay] = useState(false);
   const [busy, setBusy] = useState(false);
   const { balance, loading: balanceLoading, error: balanceError } = useLeaveBalance(uid || null, Number(from.slice(0, 4)) || new Date().getFullYear());
   useEffect(() => {
@@ -36,7 +37,7 @@ export default function ApplyLeavePage() {
   if (settingsError || balanceError) return <p role="alert">Unable to load leave settings or balances. Check your connection and reload.</p>;
   if (settingsLoading || balanceLoading) return <p>Loading leave policy…</p>;
 
-  const days = daysBetween(from, to);
+  const days = halfDay ? 0.5 : daysBetween(from, to);
   const avail = balance?.balances?.[type] ?? leaveTypes.find((item) => item.code === type)?.default ?? 0;
   const selectedType = leaveTypes.find((t) => t.code === type);
   const maxDays = selectedType?.maxDaysPerApplication ?? 3;
@@ -45,6 +46,7 @@ export default function ApplyLeavePage() {
 
   const onFromChange = (val: string) => {
     setFrom(val);
+    if (halfDay) { setTo(val); return; }
     if (!val) return;
     const maxTo = new Date(val);
     maxTo.setDate(maxTo.getDate() + maxDays - 1);
@@ -63,7 +65,7 @@ export default function ApplyLeavePage() {
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (busy || settingsLoading || balanceLoading || !selectedType) return;
-    if (days < 1 || from.slice(0, 4) !== to.slice(0, 4)) return toast.error('Choose dates within the same calendar year.');
+    if (days < 0.5 || from.slice(0, 4) !== to.slice(0, 4)) return toast.error('Choose dates within the same calendar year.');
     if (overLimit) {
       return toast.error(
         `Max ${maxDays} days per application. Split longer leaves.`
@@ -75,7 +77,7 @@ export default function ApplyLeavePage() {
     if (!uid) return;
     setBusy(true);
     try {
-      await applyLeave({ userId: uid, leaveType: type, fromDate: from, toDate: to, reason });
+      await applyLeave({ userId: uid, leaveType: type, fromDate: from, toDate: halfDay ? from : to, reason, halfDay });
       toast.success('Leave application submitted');
       nav('/attendance/leaves');
     } catch (err) {
@@ -140,6 +142,8 @@ export default function ApplyLeavePage() {
           </div>
         </div>
 
+        <label className="flex items-center gap-2 text-sm font-semibold"><input type="checkbox" checked={halfDay} onChange={(e) => { setHalfDay(e.target.checked); if (e.target.checked) setTo(from); }} />Half day (0.5 day)</label>
+        <p className="text-xs text-brand-choco-soft">CL, SL and EL earn 0.5 day each per completed month after joining, within January–December.</p>
         <div className="grid grid-cols-2 gap-3">
           <div>
             <label className="text-sm font-semibold mb-1.5 block">From</label>
@@ -160,6 +164,7 @@ export default function ApplyLeavePage() {
               value={to}
               min={from}
               max={maxToDate}
+              disabled={halfDay}
               onChange={(e) => setTo(e.target.value)}
             />
           </div>
@@ -218,7 +223,7 @@ export default function ApplyLeavePage() {
           <button
             type="submit"
             className="btn-primary"
-            disabled={busy || settingsLoading || balanceLoading || overQuota || overLimit || !selectedType || days < 1}
+            disabled={busy || settingsLoading || balanceLoading || overQuota || overLimit || !selectedType || days < 0.5}
           >
             {busy ? (
               <>

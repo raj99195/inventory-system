@@ -58,6 +58,8 @@ export async function createSchool(
 ): Promise<string> {
   const payload = {
     name: (data.name ?? '').trim(),
+    city: (data.city ?? '').trim(),
+    state: (data.state ?? '').trim(),
     inTime: data.inTime || '09:00',
     outTime: data.outTime || '17:00',
     workingDays:

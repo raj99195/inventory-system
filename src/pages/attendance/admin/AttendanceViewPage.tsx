@@ -11,20 +11,20 @@ import { fmtDate, fmtTime, minutesToHours, monthStart, monthEnd } from '@/lib/at
 import { exportToCsv } from '@/lib/attendance/csvExport';
 import type { AttendanceRecord } from '@/types';
 import { cn } from '@/lib/utils';
+import { useAuth } from '@/contexts/AuthContext';
+import { canActOnUser } from '@/lib/permissions';
 
 export default function AttendanceViewPage() {
   const { can } = usePermission();
   const { records, loading } = useAllAttendance(1000);
-  const { users } = useUsers();
+  const { users: allUsers } = useUsers();
+  const { userDoc } = useAuth();
+  const users = useMemo(() => allUsers.filter((u) => canActOnUser(userDoc, u)), [allUsers, userDoc]);
 
   const [from, setFrom] = useState(monthStart());
   const [to, setTo] = useState(monthEnd());
   const [userId, setUserId] = useState<string>('');
   const [view, setView] = useState<AttendanceRecord | null>(null);
-
-  if (!can('attendance.viewAll')) {
-    return <Navigate to="/" replace />;
-  }
 
   const userMap = useMemo(() => new Map(users.map((u) => [u.uid, u])), [users]);
 
@@ -32,11 +32,12 @@ export default function AttendanceViewPage() {
     () =>
       records.filter(
         (r) =>
+          userMap.has(r.userId) &&
           (!from || r.date >= from) &&
           (!to || r.date <= to) &&
           (!userId || r.userId === userId)
       ),
-    [records, from, to, userId]
+    [records, from, to, userId, userMap]
   );
 
   const canExport = can('attendance.exportAll');
@@ -65,6 +66,7 @@ export default function AttendanceViewPage() {
     toast.success(`Exported ${count} rows`);
   };
 
+  if (!can('attendance.viewAll')) return <Navigate to="/" replace />;
   return (
     <div className="space-y-6">
       <div>

@@ -9,6 +9,7 @@ import ConfirmDialog from '@/components/ui/ConfirmDialog';
 import { forwardGeocode, reverseGeocode } from '@/lib/attendance/geocode';
 import { cn } from '@/lib/utils';
 import type { School, WorkingDay } from '@/types';
+import { INDIAN_STATES, SCHOOL_CITIES } from '@/lib/attendance/schoolLocations';
 const DAYS: WorkingDay[] = ['MO', 'TU', 'WE', 'TH', 'FR', 'SA', 'SU'];
 const DAY_LABELS: Record<WorkingDay, string> = { MO: 'Mon', TU: 'Tue', WE: 'Wed', TH: 'Thu', FR: 'Fri', SA: 'Sat', SU: 'Sun' };
 const LIST_PATH = '/attendance/admin/schools';
@@ -49,6 +50,10 @@ function SchoolFormBody({ school, onClose }: { school: School | null; onClose: (
   const isEdit = !!school;
   const { can } = usePermission();
   const [name, setName] = useState(school?.name ?? '');
+  const { schools } = useSchools();
+  const [state, setState] = useState(school?.state ?? '');
+  const [city, setCity] = useState(school?.city ?? '');
+  const cities = [...new Set([...(SCHOOL_CITIES[state] ?? []), ...schools.filter((s) => s.state === state).map((s) => s.city ?? '')])].filter(Boolean).sort();
   const [inTime, setInTime] = useState(school?.inTime ?? '09:00');
   const [outTime, setOutTime] = useState(school?.outTime ?? '17:00');
   const [workingDays, setWorkingDays] = useState<WorkingDay[]>(
@@ -106,10 +111,13 @@ function SchoolFormBody({ school, onClose }: { school: School | null; onClose: (
     if (!Number.isFinite(Number(lat)) || Math.abs(Number(lat)) > 90 || !Number.isFinite(Number(lng)) || Math.abs(Number(lng)) > 180) return toast.error('Enter valid coordinates');
     if (!Number.isFinite(Number(radiusM)) || Number(radiusM) < 10) return toast.error('Radius must be at least 10 metres');
     if (!name.trim()) return toast.error('School name is required');
+    if (!state || !city.trim()) return toast.error('Select state and city');
     setBusy(true);
     try {
       const payload = {
         name: name.trim(),
+        state,
+        city: city.trim(),
         inTime,
         outTime,
         workingDays,
@@ -154,6 +162,10 @@ function SchoolFormBody({ school, onClose }: { school: School | null; onClose: (
         />
       </div>
 
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div><label htmlFor="school-state" className="text-sm font-semibold mb-1.5 block">State *</label><select id="school-state" className="input-field" required value={state} onChange={(e) => { setState(e.target.value); setCity(''); }}><option value="">Select state</option>{[...new Set([...INDIAN_STATES, ...(school?.state ? [school.state] : [])])].map((s) => <option key={s}>{s}</option>)}</select></div>
+        <div><label htmlFor="school-city" className="text-sm font-semibold mb-1.5 block">City *</label><input id="school-city" className="input-field" list="school-cities" required disabled={!state} value={city} onChange={(e) => setCity(e.target.value)} placeholder="Select or enter city" /><datalist id="school-cities">{cities.map((c) => <option key={c} value={c} />)}</datalist><p className="text-xs mt-1 text-brand-choco-soft">Select a suggestion or enter another city.</p></div>
+      </div>
       <div className="grid grid-cols-2 gap-3">
         <div>
           <label className="text-sm font-semibold mb-1.5 block">In time *</label>

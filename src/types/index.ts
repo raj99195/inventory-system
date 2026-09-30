@@ -264,6 +264,8 @@ export type QuotationStatus =
   | 'converted';
 
 export interface QuotationLineItem {
+  /** Original rate before quotation markup; not printed on customer PDFs. */
+  baseRate?: number;
   description: string;
   hsn?: string;
   quantity: number;

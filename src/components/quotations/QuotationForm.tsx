@@ -14,6 +14,7 @@ import { useProducts } from '@/hooks/useProducts';
 import { createQuotation, updateQuotation, generateQuotationNumber } from '@/hooks/useQuotations';
 import { downloadQuotationPdf, previewQuotationPdf } from '@/lib/quotationPdf';
 import { cn, formatINR } from '@/lib/utils';
+import { rankProducts, priceQuotationItem } from '@/lib/quotationPricing';
 
 const UNIT_OPTIONS = ['pcs','nos','box','set','pair','m','cm','kg','g','litre','ml'];
 
@@ -39,11 +40,13 @@ interface ExcelRow {
 interface Props {
   quotation:     Quotation | null;
   onClose:       () => void;
+  initialFile?: File | null;
   initialItems?: QuotationLineItem[];   // Pre-loaded from page-level Excel import
 }
 
-export default function QuotationForm({ quotation, onClose, initialItems }: Props) {
-  const { products } = useProducts();
+export default function QuotationForm({ quotation, onClose, initialItems, initialFile }: Props) {
+  const { products, loading: productsLoading } = useProducts();
+  const processedFile = useRef<File | null>(null);
 
   // Header
   const [quotationNumber, setQuotationNumber] = useState(quotation?.quotationNumber ?? '');
@@ -61,7 +64,7 @@ export default function QuotationForm({ quotation, onClose, initialItems }: Prop
 
   // Items — initialItems used only on new quotations
   const [items, setItems] = useState<QuotationLineItem[]>(
-    quotation?.items ?? initialItems ?? []
+    (quotation?.items ?? initialItems ?? []).map(item => ({ ...item, rate: item.baseRate ?? item.rate }))
   );
 
   // Internal margin
@@ -132,18 +135,16 @@ export default function QuotationForm({ quotation, onClose, initialItems }: Prop
 
   // Products for picker dropdown in Excel panel
   const pickerProducts = useMemo(() => {
-    if (!pickerSearch) return products.filter(p => p.status==='active').slice(0,8);
-    const q = pickerSearch.toLowerCase();
-    return products.filter(p =>
-      p.status==='active' &&
-      (p.name.toLowerCase().includes(q) || p.sku.toLowerCase().includes(q))
-    ).slice(0,10);
-  }, [products, pickerSearch]);
+    const row = pickerIdx === null ? undefined : excelRows[pickerIdx];
+    const query = pickerSearch.trim() || row?.name || '';
+    return rankProducts(products, query, pickerSearch.trim() ? undefined : row?.matchedProduct?.id).slice(0,10);
+  }, [products, pickerSearch, pickerIdx, excelRows]);
 
-  // ─── Totals ───────────────────────────────────────────────────
+  const pricedItems = useMemo(() => items.map(item => priceQuotationItem(item, marginPercent)), [items, marginPercent]);
+
   const totals = useMemo(() => {
     let sub=0, disc=0, tax=0, grand=0;
-    items.forEach(it => {
+    pricedItems.forEach(it => {
       const base  = it.quantity * it.rate;
       const d     = base * (it.discountPercent||0) / 100;
       const after = base - d;
@@ -151,7 +152,7 @@ export default function QuotationForm({ quotation, onClose, initialItems }: Prop
       sub += base; disc += d; tax += t; grand += after+t;
     });
     return { subTotal:r2(sub), totalDiscount:r2(disc), totalTax:r2(tax), grandTotal:r2(grand) };
-  }, [items]);
+  }, [pricedItems]);
 
   const internalStats = useMemo(() => {
     const net = totals.subTotal - totals.totalDiscount;
@@ -210,6 +211,12 @@ export default function QuotationForm({ quotation, onClose, initialItems }: Prop
       toast.error(err instanceof Error ? err.message : 'Parse failed');
     } finally { setExcelLoading(false); }
   };
+
+  useEffect(() => {
+    if (!initialFile || productsLoading || processedFile.current === initialFile) return;
+    processedFile.current = initialFile;
+    void handleExcelFile(initialFile);
+  }, [initialFile, productsLoading, products]);
 
   const updateExcelRow      = (idx: number, patch: Partial<ExcelRow>) =>
     setExcelRows(p => p.map((r,i) => i===idx ? {...r,...patch} : r));
@@ -297,7 +304,7 @@ export default function QuotationForm({ quotation, onClose, initialItems }: Prop
     customerCompany:customerCompany.trim()||undefined, customerAddress:customerAddress.trim()||undefined,
     customerGstin:customerGstin.trim()||undefined,     customerEmail:customerEmail.trim()||undefined,
     customerPhone:customerPhone.trim()||undefined,
-    items, itemCount:items.length,
+    items: pricedItems, itemCount:items.length,
     subTotal:totals.subTotal, totalDiscount:totals.totalDiscount,
     totalTax:totals.totalTax, grandTotal:totals.grandTotal,
     marginPercent:marginPercent||0,
@@ -357,13 +364,13 @@ export default function QuotationForm({ quotation, onClose, initialItems }: Prop
         )}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <Field label="Quotation No." error={errors.quotationNumber} required>
-            <div className="relative"><Hash className="abs-icon"/><input type="text" value={quotationNumber} onChange={e=>setQuotationNumber(e.target.value)} className="input-field pl-9 font-mono"/></div>
+            <div className="relative"><Hash className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-brand-choco-soft pointer-events-none"/><input type="text" value={quotationNumber} onChange={e=>setQuotationNumber(e.target.value)} className="input-field pl-9 font-mono"/></div>
           </Field>
           <Field label="Date" error={errors.quotationDate} required>
-            <div className="relative"><Calendar className="abs-icon"/><input type="date" value={quotationDate} onChange={e=>setQuotationDate(e.target.value)} className="input-field pl-9"/></div>
+            <div className="relative"><Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-brand-choco-soft pointer-events-none"/><input type="date" value={quotationDate} onChange={e=>setQuotationDate(e.target.value)} className="input-field pl-9"/></div>
           </Field>
           <Field label="Valid Until" error={errors.validUntil} required>
-            <div className="relative"><Calendar className="abs-icon"/><input type="date" value={validUntil} onChange={e=>setValidUntil(e.target.value)} className="input-field pl-9"/></div>
+            <div className="relative"><Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-brand-choco-soft pointer-events-none"/><input type="date" value={validUntil} onChange={e=>setValidUntil(e.target.value)} className="input-field pl-9"/></div>
           </Field>
           <Field label="Status">
             <select value={status} onChange={e=>setStatus(e.target.value as Quotation['status'])} className="input-field">
@@ -383,7 +390,7 @@ export default function QuotationForm({ quotation, onClose, initialItems }: Prop
             <input type="text" value={customerName} onChange={e=>setCustomerName(e.target.value)} placeholder="e.g. Rajesh Kumar" className="input-field"/>
           </Field>
           <Field label="Company Name">
-            <div className="relative"><Building2 className="abs-icon"/><input type="text" value={customerCompany} onChange={e=>setCustomerCompany(e.target.value)} placeholder="e.g. ABC Enterprises" className="input-field pl-9"/></div>
+            <div className="relative"><Building2 className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-brand-choco-soft pointer-events-none"/><input type="text" value={customerCompany} onChange={e=>setCustomerCompany(e.target.value)} placeholder="e.g. ABC Enterprises" className="input-field pl-9"/></div>
           </Field>
         </div>
         <Field label="Address">
@@ -394,17 +401,17 @@ export default function QuotationForm({ quotation, onClose, initialItems }: Prop
             <input type="text" value={customerGstin} onChange={e=>setCustomerGstin(e.target.value.toUpperCase())} placeholder="09ABCDE1234F1Z5" className="input-field font-mono uppercase"/>
           </Field>
           <Field label="Email">
-            <div className="relative"><Mail className="abs-icon"/><input type="email" value={customerEmail} onChange={e=>setCustomerEmail(e.target.value)} placeholder="customer@example.com" className="input-field pl-9"/></div>
+            <div className="relative"><Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-brand-choco-soft pointer-events-none"/><input type="email" value={customerEmail} onChange={e=>setCustomerEmail(e.target.value)} placeholder="customer@example.com" className="input-field pl-9"/></div>
           </Field>
           <Field label="Phone">
-            <div className="relative"><Phone className="abs-icon"/><input type="tel" value={customerPhone} onChange={e=>setCustomerPhone(e.target.value)} placeholder="+91 98765 43210" className="input-field pl-9"/></div>
+            <div className="relative"><Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-brand-choco-soft pointer-events-none"/><input type="tel" value={customerPhone} onChange={e=>setCustomerPhone(e.target.value)} placeholder="+91 98765 43210" className="input-field pl-9"/></div>
           </Field>
         </div>
       </section>
 
       {/* ─── Line Items ─── */}
       <section className="space-y-4">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between gap-3 flex-wrap">
           <SH icon={Package} title="Line Items" sub="Add manually, search products, or import from Excel" />
           <div>
             <input ref={excelInputRef} type="file" accept=".xlsx,.xls,.csv" className="hidden"
@@ -535,7 +542,7 @@ export default function QuotationForm({ quotation, onClose, initialItems }: Prop
                 <p className="text-xs text-green-900 font-semibold">
                   {selectedCount} of {excelRows.length} selected
                   {excelRows.filter(r=>r.selected&&r.matchType==='none').length>0 && (
-                    <span className="text-orange-700 ml-2">· {excelRows.filter(r=>r.selected&&r.matchType==='none').length} unmatched (rate=0)</span>
+                    <span className="text-orange-700 ml-2">· {excelRows.filter(r=>r.selected&&r.matchType==='none').length} unmatched</span>
                   )}
                 </p>
                 <button type="button" onClick={addExcelItems} disabled={selectedCount===0} className="btn-primary text-sm disabled:opacity-60">
@@ -552,7 +559,7 @@ export default function QuotationForm({ quotation, onClose, initialItems }: Prop
             <div className="col-span-12 md:col-span-5 relative" ref={sugRef}>
               <label className="block text-[10px] font-bold uppercase tracking-wider text-brand-choco-soft mb-1">Description / Search Product</label>
               <div className="relative">
-                <Search className="abs-icon pointer-events-none"/>
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-brand-choco-soft pointer-events-none"/>
                 <input type="text" value={newDesc}
                   onChange={e=>{setNewDesc(e.target.value);setShowSug(true);if(linked&&e.target.value!==linked.name)setLinked(null);}}
                   placeholder="Type name or search..." className="input-field pl-9"/>
@@ -596,7 +603,7 @@ export default function QuotationForm({ quotation, onClose, initialItems }: Prop
           </div>
           <div className="grid grid-cols-12 gap-2">
             <div className="col-span-4 md:col-span-3">
-              <label className="block text-[10px] font-bold uppercase tracking-wider text-brand-choco-soft mb-1">Rate (₹)</label>
+              <label className="block text-[10px] font-bold uppercase tracking-wider text-brand-choco-soft mb-1">Base Rate (₹)</label>
               <input type="number" value={newRate} onChange={e=>setNewRate(Number(e.target.value))} min={0} step={0.01} className="input-field"/>
             </div>
             <div className="col-span-4 md:col-span-2">
@@ -633,7 +640,7 @@ export default function QuotationForm({ quotation, onClose, initialItems }: Prop
             <div className="max-h-96 overflow-y-auto">
               <AnimatePresence initial={false}>
                 {items.map((it,idx)=>(
-                  <ItemRow key={idx} item={it} index={idx} isFirst={idx===0}
+                  <ItemRow key={idx} item={{...it, amount: pricedItems[idx].amount}} index={idx} isFirst={idx===0}
                     onUpdate={p=>handleUpdateItem(idx,p)} onRemove={()=>handleRemoveItem(idx)}/>
                 ))}
               </AnimatePresence>
@@ -641,6 +648,7 @@ export default function QuotationForm({ quotation, onClose, initialItems }: Prop
           </div>
         )}
 
+        {items.length > 0 && <p className="text-xs text-brand-choco-soft">Editable rates are base rates. {marginPercent}% markup is included in line totals, quotation totals and customer PDF prices.</p>}
         {/* Totals */}
         {items.length>0 && (
           <div className="flex flex-col items-end gap-1.5 py-4 border-t border-brand-choco/8 text-sm">
@@ -669,7 +677,7 @@ export default function QuotationForm({ quotation, onClose, initialItems }: Prop
                       <EyeOff className="w-2.5 h-2.5"/>Not on PDF
                     </span>
                   </div>
-                  <p className="text-xs text-purple-800/80">Profitability tracking — never shown to customer</p>
+                  <p className="text-xs text-purple-800/80">Markup increases item prices before discount and GST.</p>
                 </div>
               </div>
               {showInternalPanel ? <ChevronUp className="w-4 h-4 text-purple-700"/> : <ChevronDown className="w-4 h-4 text-purple-700"/>}
@@ -705,10 +713,10 @@ export default function QuotationForm({ quotation, onClose, initialItems }: Prop
                         <Stat label="Est. Profit"   value={formatINR(internalStats.profit)} hint="Selling − Cost" hi/>
                         <Stat label="Profit Margin" value={`${internalStats.pct}%`}         hint="Profit / Selling"/>
                       </div>
-                    ) : <p className="text-xs text-purple-800/70 italic">Enter a margin % to see estimates.</p>}
+                    ) : <p className="text-xs text-purple-800/70 italic">Enter a markup: 10% changes a base rate of 100 to 110 before GST.</p>}
                     <div className="flex items-start gap-2 p-3 rounded-xl bg-purple-100/60 text-xs text-purple-900">
                       <Lock className="w-3.5 h-3.5 shrink-0 mt-0.5"/>
-                      <p><b>Confidential:</b> Never included in customer PDF.</p>
+                      <p><b>Confidential:</b> Markup percentage and notes stay private; increased prices appear on the customer PDF.</p>
                     </div>
                   </div>
                 </motion.div>
@@ -730,7 +738,7 @@ export default function QuotationForm({ quotation, onClose, initialItems }: Prop
       </section>
 
       {/* ─── Actions ─── */}
-      <div className="flex items-center justify-end gap-3 pt-4 border-t border-brand-choco/8 sticky bottom-0 bg-white -mx-6 px-6 pb-2">
+      <div className="flex flex-wrap items-center justify-end gap-2 pt-4 border-t border-brand-choco/8 sticky bottom-0 bg-white -mx-6 px-6 pb-2">
         <button type="button" onClick={onClose} disabled={saving||downloading||previewing} className="btn-secondary">Cancel</button>
         <button type="button" onClick={handlePreview} disabled={saving||downloading||previewing||!items.length} className="btn-secondary">
           {previewing ? <><Loader2 className="w-4 h-4 animate-spin"/>Loading...</> : <><Eye className="w-4 h-4"/>Preview PDF</>}
@@ -772,7 +780,7 @@ function ItemRow({ item, index, isFirst, onUpdate, onRemove }: {
         <span className="text-[10px] font-semibold text-brand-choco-soft w-8 shrink-0">{item.unit}</span>
         <div className="flex items-center gap-1 shrink-0">
           <span className="text-xs text-brand-choco-soft">₹</span>
-          <input type="number" value={item.rate} onChange={e=>onUpdate({rate:Number(e.target.value)})} min={0} step={0.01}
+          <input aria-label="Base rate before markup" title="Base rate before markup" type="number" value={item.rate} onChange={e=>onUpdate({rate:Number(e.target.value)})} min={0} step={0.01}
             className="h-9 w-20 px-2 rounded-lg bg-white border-2 border-brand-choco/8 focus:border-brand-orange outline-none text-sm font-bold text-center"/>
         </div>
         <div className="flex items-center gap-0.5 shrink-0" title="Disc%">

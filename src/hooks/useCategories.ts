@@ -22,15 +22,26 @@ export interface Category {
 
 const COL = 'categories';
 
+const STANDARD_CATEGORIES = ["Power Supply", "Connector", "DIY Model", "DIY Kit", "Decorative Items", "Sensor", "Prototyping Tool", "Kit Spare Parts", "Drone/Drone Part", "Electronic Components", "Display", "Organiser", "Adhesive", "Electrical Item", "Mechanical Tools", "Development Board", "Project", "Electronic Development", "Switch/Switch Holder", "Camera", "Electronic Accessories", "Wheel", "Telescope", "Furniture Item", "Motor", "Soldering Part", "Safety Equipments", "Robot", "Storage", "Stationery Item", "Screw & Nuts", "Binoculars", "Microscope", "Laptop", "Projecter", "VR Headset"];
+
+function categoryOptions(saved: Category[]): Category[] {
+  const options = new Map(STANDARD_CATEGORIES.map((name) => [name.toLowerCase(), { id: `standard-${name}`, name } as Category]));
+  for (const category of saved) {
+    const key = category.name.trim().toLowerCase();
+    if (key && key !== 'er') options.set(key, category);
+  }
+  return [...options.values()].sort((a, b) => a.name.localeCompare(b.name));
+}
+
 export function useCategories() {
-  const [categories, setCategories] = useState<Category[]>([]);
+  const [categories, setCategories] = useState<Category[]>(() => categoryOptions([]));
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const q = query(collection(db, COL), orderBy('name'));
     const unsub = onSnapshot(q, (snap) => {
       setCategories(
-        snap.docs.map((d) => ({ id: d.id, ...d.data() } as Category))
+        categoryOptions(snap.docs.map((d) => ({ id: d.id, ...d.data() } as Category)))
       );
       setLoading(false);
     });

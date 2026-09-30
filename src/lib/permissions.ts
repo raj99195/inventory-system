@@ -202,7 +202,7 @@ export const ACCOUNTANT_PRESET: Permissions = {
 };
 
 export const EMPLOYEE_PRESET: Permissions = {
-  dashboard: { view: true },
+  dashboard: { view: false },
   products: { view: false, create: false, edit: false, delete: false },
   kits: { view: false, create: false, edit: false, delete: false },
   stock: { view: false, stockIn: false, stockOut: false, adjustment: false },

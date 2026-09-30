@@ -1,5 +1,6 @@
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { useAuth } from './contexts/AuthContext';
+import { usePermission } from './hooks/usePermission';
 import LoginPage from './pages/LoginPage';
 import DashboardLayout from './components/layout/DashboardLayout';
 import DashboardPage from './pages/DashboardPage';
@@ -17,6 +18,7 @@ import LoadingScreen from './components/ui/LoadingScreen';
 import QuotationsPage from '@/pages/QuotationsPage';
 
 // ─── Attendance pages ─────────────────────────────────
+import HolidayCalendarPage from '@/pages/attendance/HolidayCalendarPage';
 import AttendanceHomePage from '@/pages/attendance/AttendanceHomePage';
 import MarkAttendancePage from '@/pages/attendance/MarkAttendancePage';
 import MyAttendancePage from '@/pages/attendance/MyAttendancePage';
@@ -42,6 +44,11 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
+function DashboardEntry() {
+  const { can } = usePermission();
+  return can('dashboard.view') ? <DashboardPage /> : <Navigate to="/attendance" replace />;
+}
+
 export default function App() {
   return (
     <Routes>
@@ -54,7 +61,7 @@ export default function App() {
           </ProtectedRoute>
         }
       >
-        <Route index element={<DashboardPage />} />
+        <Route index element={<DashboardEntry />} />
 
         {/* Inventory */}
         <Route path="products" element={<ProductsPage />} />
@@ -74,6 +81,7 @@ export default function App() {
 
         {/* ─── Attendance (Employee) ─── */}
         <Route path="attendance" element={<AttendanceHomePage />} />
+        <Route path="attendance/holidays" element={<HolidayCalendarPage />} />
         <Route path="attendance/mark" element={<MarkAttendancePage />} />
         <Route path="attendance/my" element={<MyAttendancePage />} />
         <Route path="attendance/apply-leave" element={<ApplyLeavePage />} />

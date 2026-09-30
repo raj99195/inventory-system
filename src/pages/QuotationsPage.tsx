@@ -15,10 +15,9 @@ import EmptyState from '@/components/ui/EmptyState';
 import { ProductRowSkeleton } from '@/components/ui/Skeleton';
 import QuotationForm from '@/components/quotations/QuotationForm';
 import { useQuotations, deleteQuotation } from '@/hooks/useQuotations';
-import { useProducts } from '@/hooks/useProducts';
 import { usePermission } from '@/hooks/usePermission';
 import { downloadQuotationPdf, previewQuotationPdf } from '@/lib/quotationPdf';
-import type { Quotation, QuotationLineItem, QuotationStatus, Product } from '@/types';
+import type { Quotation, QuotationStatus } from '@/types';
 import { cn, formatINR } from '@/lib/utils';
 
 type StatusFilter = 'all' | QuotationStatus;
@@ -37,7 +36,6 @@ const STATUS_META: Record<
 
 export default function QuotationsPage() {
   const { quotations, loading } = useQuotations(200);
-  const { products }            = useProducts();
   const { can }                 = usePermission();
   const location                = useLocation();
   const navigate                = useNavigate();
@@ -49,9 +47,9 @@ export default function QuotationsPage() {
   const [confirmDelete, setConfirmDelete] = useState<Quotation | null>(null);
 
   // 🚀 Pre-loaded items from top-level Excel import
-  const [preloadedItems, setPreloadedItems] = useState<QuotationLineItem[]>([]);
+  const [importFile, setImportFile] = useState<File | null>(null);
   const excelRef                            = useRef<HTMLInputElement>(null);
-  const [excelLoading, setExcelLoading]     = useState(false);
+  const excelLoading = false;
 
   const canView   = can('quotations.view') || can('dashboard.view');
   const canCreate = can('quotations.create') || can('dashboard.view');
@@ -61,84 +59,21 @@ export default function QuotationsPage() {
   useEffect(() => {
     const state = location.state as { openCreate?: boolean } | null;
     if (state?.openCreate) {
-      if (canCreate) { setEditing(null); setPreloadedItems([]); setFormOpen(true); }
+      if (canCreate) { setEditing(null); setImportFile(null); setFormOpen(true); }
       else toast.error("You don't have permission to create quotations");
       navigate(location.pathname, { replace: true, state: {} });
     }
   }, [location.state, location.pathname, navigate, canCreate]);
 
-  if (!canView) return <Navigate to="/" replace />;
+
 
   // ─── Product matching helper ──────────────────────────────────
-  const matchProduct = (name: string): { product?: Product; type: 'exact'|'partial'|'none' } => {
-    const q = name.toLowerCase().trim();
-    const exact = products.find(p => p.name.toLowerCase().trim() === q);
-    if (exact) return { product: exact, type: 'exact' };
-    const partial = products.find(p => { const pn = p.name.toLowerCase().trim(); return pn.includes(q) || q.includes(pn); });
-    if (partial) return { product: partial, type: 'partial' };
-    return { type: 'none' };
+  const handleTopExcelFile = (file: File) => {
+    setImportFile(file);
+    setEditing(null);
+    setFormOpen(true);
   };
 
-  // ─── Top-level Excel Import ───────────────────────────────────
-  const handleTopExcelFile = async (file: File) => {
-    setExcelLoading(true);
-    try {
-      const buffer  = await file.arrayBuffer();
-      const wb      = XLSX.read(buffer, { type: 'array' });
-      const ws      = wb.Sheets[wb.SheetNames[0]];
-      const rawRows = XLSX.utils.sheet_to_json<Record<string, unknown>>(ws, { defval: null, raw: true });
-      if (!rawRows.length) { toast.error('Sheet is empty'); return; }
-
-      const keys     = Object.keys(rawRows[0]);
-      const findCol  = (...kws: string[]) => keys.find(k => kws.some(kw => k.toLowerCase().replace(/[\s\n\/]/g,'').includes(kw))) ?? null;
-      const nameCol  = findCol('component','name','article','description','item');
-      const qtyCol   = findCol('total','quantity','qty','suggestedqty');
-      const rateCol  = findCol('priceunit','price','rate','unitprice');
-
-      if (!nameCol) { toast.error('Cannot detect name column. Headers: ' + keys.join(', ')); return; }
-
-      const items: QuotationLineItem[] = [];
-      for (const row of rawRows) {
-        const name = String(row[nameCol] || '').trim();
-        if (!name || /^(sr|s\.n|sl)/i.test(name)) continue;
-        const qty  = qtyCol  ? parseFloat(String(row[qtyCol]  ?? '1'))||1 : 1;
-        const rate0 = rateCol ? parseFloat(String(row[rateCol] ?? '0'))||0 : 0;
-
-        const { product } = matchProduct(name);
-        const rate    = product?.sellingPrice ?? rate0;
-        const gst     = product?.gstPercent ?? 18;
-        const amount  = Math.round(qty * rate * (1 + gst/100) * 100) / 100;
-
-        items.push({
-          description:    name,
-          hsn:            product?.sku || undefined,
-          quantity:       qty,
-          unit:           product?.unit ?? 'pcs',
-          rate,
-          discountPercent: 0,
-          gstPercent:     gst,
-          amount,
-          productId:      product?.id,
-          productSku:     product?.sku,
-        });
-      }
-
-      if (!items.length) { toast.error('No valid rows found'); return; }
-
-      const matched = items.filter(i => i.productId).length;
-      toast.success(`${items.length} items from Excel — ${matched} matched to products`);
-
-      setPreloadedItems(items);
-      setEditing(null);
-      setFormOpen(true);
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Parse failed');
-    } finally {
-      setExcelLoading(false);
-    }
-  };
-
-  // ─── Filtered quotations ──────────────────────────────────────
   const filtered = useMemo(() => {
     return quotations.filter(q => {
       const s = search.toLowerCase();
@@ -178,7 +113,7 @@ export default function QuotationsPage() {
 
   const handleEdit = (q: Quotation) => {
     if (!canEdit) { toast.error("No permission to edit"); return; }
-    setEditing(q); setPreloadedItems([]); setFormOpen(true);
+    setEditing(q); setImportFile(null); setFormOpen(true);
   };
 
   const handleDownload = async (q: Quotation) => {
@@ -196,6 +131,8 @@ export default function QuotationsPage() {
     try { await deleteQuotation(confirmDelete); toast.success('Deleted'); setConfirmDelete(null); }
     catch (err) { toast.error(err instanceof Error ? err.message : 'Delete failed'); }
   };
+
+  if (!canView) return <Navigate to="/" replace />;
 
   return (
     <div className="space-y-6">
@@ -227,7 +164,7 @@ export default function QuotationsPage() {
           )}
 
           {canCreate && (
-            <button onClick={() => { setEditing(null); setPreloadedItems([]); setFormOpen(true); }} className="btn-primary">
+            <button onClick={() => { setEditing(null); setImportFile(null); setFormOpen(true); }} className="btn-primary">
               <Plus className="w-4 h-4"/>New Quotation
             </button>
           )}
@@ -273,7 +210,7 @@ export default function QuotationsPage() {
             ? canCreate ? 'Create a quotation or import from Excel.' : 'No quotations yet.'
             : 'Try changing filters.'}
           action={quotations.length===0&&canCreate
-            ? { label:'New Quotation', icon:Plus, onClick:()=>{ setEditing(null); setPreloadedItems([]); setFormOpen(true); } }
+            ? { label:'New Quotation', icon:Plus, onClick:()=>{ setEditing(null); setImportFile(null); setFormOpen(true); } }
             : undefined}
         />
       ) : (
@@ -290,13 +227,13 @@ export default function QuotationsPage() {
 
       {/* Form modal */}
       <Modal open={formOpen} onClose={()=>setFormOpen(false)}
-        title={editing ? `Edit Quotation ${editing.quotationNumber}` : preloadedItems.length>0 ? `New Quotation (${preloadedItems.length} items imported)` : 'New Quotation'}
+        title={editing ? `Edit Quotation ${editing.quotationNumber}` : 'New Quotation'}
         description="Build a professional quotation with itemized pricing and GST."
         size="xl" closeOnOverlay={false}
       >
         <QuotationForm quotation={editing}
-          initialItems={preloadedItems}
-          onClose={() => { setFormOpen(false); setEditing(null); setPreloadedItems([]); }}
+          initialFile={importFile}
+          onClose={() => { setFormOpen(false); setEditing(null); setImportFile(null); }}
         />
       </Modal>
 

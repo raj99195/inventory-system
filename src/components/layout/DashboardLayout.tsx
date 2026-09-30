@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useId } from 'react';
 import { Outlet, NavLink, useNavigate, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -63,40 +63,29 @@ interface NavSection {
 
 const NAV_SECTIONS: NavSection[] = [
   {
-    title: 'Main Menu',
+    title: 'Inventory',
     items: [
-      { to: '/', label: 'Dashboard', icon: LayoutDashboard, end: true, viewPerm: 'dashboard.view' },
-      { to: '/products', label: 'Products', icon: Package, viewPerm: 'products.view', createPerm: 'products.create', quickAddType: 'products',
-        children: [{ to: '/kits', label: 'Kits', icon: Boxes, viewPerm: 'kits.view', createPerm: 'kits.create', quickAddType: 'kits' }] },
+      { to: '/products', label: 'Products', icon: Package, viewPerm: 'products.view', createPerm: 'products.create', quickAddType: 'products' },
+      { to: '/kits', label: 'Kits', icon: Boxes, viewPerm: 'kits.view', createPerm: 'kits.create', quickAddType: 'kits' },
       { to: '/stock', label: 'Stock Movement', icon: ArrowLeftRight, viewPerm: 'stock.view', createPerm: 'stock.stockIn', quickAddType: 'stock' },
       { to: '/invoices', label: 'Invoices', icon: FileText, viewPerm: 'invoices.view', createPerm: 'invoices.upload', quickAddType: 'invoices' },
       { to: '/quotations', label: 'Quotations', icon: Receipt, viewPerm: 'quotations.view', createPerm: 'quotations.create' },
      
       { to: '/assets', label: 'Assets', icon: Laptop, viewPerm: 'assets.view', createPerm: 'assets.create', quickAddType: 'assets' },
       { to: '/assignments', label: 'Asset Assignments', icon: UserCheck, viewPerm: 'assignments.view', createPerm: 'assignments.assign', quickAddType: 'assignments' },
-    ],
-  },
-  {
-    title: 'Requests',
-    items: [
+
       { to: '/requests', label: 'My Requests', icon: Send, end: true, viewPerm: 'requests.viewOwn' },
-      { to: '/requests/new', label: 'New Request', icon: Plus, viewPerm: 'requests.createOwn' },
       { to: '/requests/admin', label: 'Approvals', icon: Inbox, viewPerm: 'requests.viewAll' },
     ],
   },
   {
-    title: 'Attendance',
+    title: 'HRMS',
     items: [
       { to: '/attendance', label: 'Home', icon: HomeIcon, end: true, viewPerm: 'attendance.viewOwn' },
-      { to: '/attendance/mark', label: 'Mark Attendance', icon: CameraIcon, viewPerm: 'attendance.markOwn' },
+      { to: '/attendance/holidays', label: 'Holiday Calendar', icon: CalendarIcon, viewPerm: 'attendance.viewOwn' },
       { to: '/attendance/my', label: 'My History', icon: CalendarIcon, viewPerm: 'attendance.viewOwn' },
       { to: '/attendance/leaves', label: 'My Leaves', icon: ClipboardList, viewPerm: 'leaves.viewOwn' },
-      { to: '/attendance/apply-leave', label: 'Apply Leave', icon: Plus, viewPerm: 'leaves.applyOwn' },
-    ],
-  },
-  {
-    title: 'Attendance Admin',
-    items: [
+
       { to: '/attendance/admin', label: 'Team Dashboard', icon: Building2, end: true, viewPerm: 'attendance.viewAll' },
       { to: '/attendance/admin/view', label: 'Team Attendance', icon: CalendarIcon, viewPerm: 'attendance.viewAll' },
       { to: '/attendance/admin/leaves', label: 'Leave Approvals', icon: ClipboardList, viewPerm: 'leaves.viewAll' },
@@ -121,9 +110,6 @@ const QUICK_ACTIONS: {
   { label: 'Register Asset', icon: Laptop, href: '/assets', perm: 'assets.create', quickAddType: 'assets' },
   { label: 'Assign Asset', icon: UserCheck, href: '/assignments', perm: 'assignments.assign', quickAddType: 'assignments' },
   { label: 'New User', icon: Shield, href: '/users', perm: 'users.create', quickAddType: 'users' },
-  { label: 'Request Item', icon: Send, href: '/requests/new', perm: 'requests.createOwn' },
-  { label: 'Mark Attendance', icon: CameraIcon, href: '/attendance/mark', perm: 'attendance.markOwn' },
-  { label: 'Apply Leave', icon: ClipboardList, href: '/attendance/apply-leave', perm: 'leaves.applyOwn' },
 ];
 
 export default function DashboardLayout() {
@@ -131,6 +117,21 @@ export default function DashboardLayout() {
   const navigate = useNavigate();
   const location = useLocation();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+
+  useEffect(() => { setSidebarOpen(false); }, [location.key]);
+
+  useEffect(() => {
+    const desktop = window.matchMedia('(min-width: 1024px)');
+    const closeOnDesktop = () => { if (desktop.matches) setSidebarOpen(false); };
+    const closeOnEscape = (event: KeyboardEvent) => { if (event.key === 'Escape') setSidebarOpen(false); };
+    desktop.addEventListener('change', closeOnDesktop);
+    document.addEventListener('keydown', closeOnEscape);
+    return () => {
+      desktop.removeEventListener('change', closeOnDesktop);
+      document.removeEventListener('keydown', closeOnEscape);
+    };
+  }, []);
+
 
   const handleLogout = async () => {
     await logout();
@@ -147,29 +148,29 @@ export default function DashboardLayout() {
           <SidebarContent onLogout={handleLogout} userEmail={user?.email ?? ''} userName={userDoc?.name ?? 'User'} userRole={userDoc?.role ?? null} />
         </aside>
 
-        <AnimatePresence>
-          {sidebarOpen && (
-            <>
-              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-                onClick={() => setSidebarOpen(false)}
-                className="fixed inset-0 bg-brand-choco/40 backdrop-blur-sm z-40 lg:hidden" />
-              <motion.aside initial={{ x: '-100%' }} animate={{ x: 0 }} exit={{ x: '-100%' }}
-                transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-                className="fixed inset-y-0 left-0 w-72 bg-white z-50 lg:hidden flex flex-col">
-                <SidebarContent onLogout={handleLogout} userEmail={user?.email ?? ''} userName={userDoc?.name ?? 'User'} userRole={userDoc?.role ?? null}
-                  onNavigate={() => setSidebarOpen(false)} />
-              </motion.aside>
-            </>
-          )}
-        </AnimatePresence>
+        {/* Unmount the drawer and backdrop together; no exiting overlay can intercept taps. */}
+        {sidebarOpen && (
+          <div className="fixed inset-0 z-50 lg:hidden" role="dialog" aria-modal="true" aria-label="Navigation menu">
+            <button type="button" aria-label="Close navigation menu" onClick={() => setSidebarOpen(false)}
+              className="absolute inset-0 w-full h-full bg-brand-choco/40" />
+            <aside id="mobile-navigation" className="absolute inset-y-0 left-0 w-72 max-w-[85vw] bg-white flex flex-col overscroll-contain">
+              <SidebarContent onLogout={handleLogout} userEmail={user?.email ?? ''} userName={userDoc?.name ?? 'User'} userRole={userDoc?.role ?? null}
+                onNavigate={() => setSidebarOpen(false)} />
+            </aside>
+          </div>
+        )}
 
         <div className="flex-1 flex flex-col min-w-0">
           <header className="sticky top-0 z-30 bg-brand-cream/70 backdrop-blur-xl border-b border-brand-choco/5">
             <div className="flex items-center gap-3 px-4 lg:px-8 h-20">
-              <button onClick={() => setSidebarOpen(true)}
-                className="lg:hidden w-11 h-11 rounded-2xl bg-white border border-brand-choco/8 flex items-center justify-center hover:bg-brand-cream-dark transition">
+              <button type="button" aria-label="Open navigation menu" aria-expanded={sidebarOpen} aria-controls="mobile-navigation" onClick={() => setSidebarOpen(true)}
+                className="lg:hidden w-11 h-11 shrink-0 rounded-2xl bg-white border border-brand-choco/8 flex items-center justify-center hover:bg-brand-cream-dark transition">
                 <Menu className="w-5 h-5" />
               </button>
+
+              <NavLink to="/attendance" aria-label="HRMS Home" className="lg:hidden w-11 h-11 shrink-0 rounded-2xl bg-white border border-brand-choco/8 flex items-center justify-center">
+                <HomeIcon className="w-5 h-5" />
+              </NavLink>
 
               <div className="hidden lg:flex flex-col mr-2">
                 <span className="text-[10px] font-bold uppercase tracking-widest text-brand-choco-soft">
@@ -198,7 +199,7 @@ export default function DashboardLayout() {
 function getPageTitle(path: string) {
   if (path.startsWith('/attendance/admin/schools/')) {
     const title = path.endsWith('/new') ? 'Add School' : path.endsWith('/edit') ? 'Edit School' : path.endsWith('/delete') ? 'Delete School' : 'Schools';
-    return { category: 'Attendance Admin', title };
+    return { category: 'HRMS Admin', title };
   }
   const map: Record<string, { category: string; title: string }> = {
     '/': { category: 'Overview', title: 'Dashboard' },
@@ -217,17 +218,18 @@ function getPageTitle(path: string) {
     '/requests/new': { category: 'Requests', title: 'New Request' },
     '/requests/admin': { category: 'Requests Admin', title: 'Approvals' },
 
-    '/attendance': { category: 'Attendance', title: 'Home' },
-    '/attendance/mark': { category: 'Attendance', title: 'Mark Attendance' },
-    '/attendance/my': { category: 'Attendance', title: 'My History' },
-    '/attendance/apply-leave': { category: 'Attendance', title: 'Apply Leave' },
-    '/attendance/leaves': { category: 'Attendance', title: 'My Leaves' },
+    '/attendance': { category: 'HRMS', title: 'Home' },
+    '/attendance/mark': { category: 'HRMS', title: 'Mark Attendance' },
+    '/attendance/holidays': { category: 'HRMS', title: 'Holiday Calendar' },
+    '/attendance/my': { category: 'HRMS', title: 'My History' },
+    '/attendance/apply-leave': { category: 'HRMS', title: 'Apply Leave' },
+    '/attendance/leaves': { category: 'HRMS', title: 'My Leaves' },
 
-    '/attendance/admin': { category: 'Attendance Admin', title: 'Team Dashboard' },
-    '/attendance/admin/view': { category: 'Attendance Admin', title: 'Team Attendance' },
-    '/attendance/admin/leaves': { category: 'Attendance Admin', title: 'Leave Approvals' },
-    '/attendance/admin/schools': { category: 'Attendance Admin', title: 'Schools' },
-    '/attendance/admin/settings': { category: 'Attendance Admin', title: 'Settings' },
+    '/attendance/admin': { category: 'HRMS Admin', title: 'Team Dashboard' },
+    '/attendance/admin/view': { category: 'HRMS Admin', title: 'Team Attendance' },
+    '/attendance/admin/leaves': { category: 'HRMS Admin', title: 'Leave Approvals' },
+    '/attendance/admin/schools': { category: 'HRMS Admin', title: 'Schools' },
+    '/attendance/admin/settings': { category: 'HRMS Admin', title: 'Settings' },
   };
   return map[path] ?? { category: 'Portal', title: 'STEMmantra' };
 }
@@ -260,7 +262,7 @@ function SidebarNavItem({ item, onNavigate, indent }: { item: NavItem; onNavigat
           <>
             <item.icon className={cn('w-5 h-5 transition shrink-0', navActive ? 'text-white' : 'text-brand-choco-soft group-hover:text-brand-orange')} />
             <span className="flex-1 truncate">{item.label}</span>
-            {navActive && <motion.div layoutId="activeDot" className="w-1.5 h-1.5 rounded-full bg-white shrink-0" />}
+            {navActive && <span className="w-1.5 h-1.5 rounded-full bg-white shrink-0" />}
           </>
         )}
       </NavLink>
@@ -277,6 +279,8 @@ function SidebarNavItem({ item, onNavigate, indent }: { item: NavItem; onNavigat
 function GlobalSearch() {
   const [query, setQuery] = useState('');
   const [open, setOpen] = useState(false);
+  const menuLocation = useLocation();
+  useEffect(() => { setOpen(false); }, [menuLocation.key]);
   const [activeIdx, setActiveIdx] = useState(0);
   const navigate = useNavigate();
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -284,11 +288,11 @@ function GlobalSearch() {
   const { results } = useGlobalSearch(query);
 
   useEffect(() => {
-    const onClickOutside = (e: MouseEvent) => {
+    const onClickOutside = (e: PointerEvent) => {
       if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) setOpen(false);
     };
-    document.addEventListener('mousedown', onClickOutside);
-    return () => document.removeEventListener('mousedown', onClickOutside);
+    document.addEventListener('pointerdown', onClickOutside);
+    return () => document.removeEventListener('pointerdown', onClickOutside);
   }, []);
 
   useEffect(() => {
@@ -317,7 +321,7 @@ function GlobalSearch() {
           onChange={(e) => { setQuery(e.target.value); setOpen(true); setActiveIdx(0); }}
           onFocus={() => setOpen(true)} onKeyDown={handleKey}
           placeholder="Search anything..."
-          className="w-full pl-11 pr-20 py-3 rounded-2xl bg-white border-2 border-brand-choco/8 focus:border-brand-orange focus:ring-4 focus:ring-brand-orange/10 outline-none text-sm font-medium transition shadow-sm hover:shadow" />
+          className="w-full pl-11 pr-3 sm:pr-20 py-3 rounded-2xl bg-white border-2 border-brand-choco/8 focus:border-brand-orange focus:ring-4 focus:ring-brand-orange/10 outline-none text-sm font-medium transition shadow-sm hover:shadow" />
         <kbd className="absolute right-3 top-1/2 -translate-y-1/2 hidden sm:flex items-center gap-1 px-2 py-1 rounded-lg bg-brand-cream-dark text-[10px] font-mono font-bold text-brand-choco-soft border border-brand-choco/10">
           <Command className="w-2.5 h-2.5" /> K
         </kbd>
@@ -325,7 +329,7 @@ function GlobalSearch() {
 
       <AnimatePresence>
         {open && query.length >= 2 && (
-          <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }}
+          <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8, pointerEvents: 'none' }}
             className="absolute top-full mt-2 left-0 right-0 bg-white rounded-3xl shadow-2xl border border-brand-choco/8 overflow-hidden z-50">
             {results.length === 0 ? (
               <div className="p-8 text-center">
@@ -365,17 +369,19 @@ function GlobalSearch() {
 
 function QuickActionsMenu() {
   const [open, setOpen] = useState(false);
+  const menuLocation = useLocation();
+  useEffect(() => { setOpen(false); }, [menuLocation.key]);
   const navigate = useNavigate();
   const { can } = usePermission();
   const { open: openQuickAdd, supports } = useQuickAdd();
   const wrapRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    const onClickOutside = (e: MouseEvent) => {
+    const onClickOutside = (e: PointerEvent) => {
       if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) setOpen(false);
     };
-    document.addEventListener('mousedown', onClickOutside);
-    return () => document.removeEventListener('mousedown', onClickOutside);
+    document.addEventListener('pointerdown', onClickOutside);
+    return () => document.removeEventListener('pointerdown', onClickOutside);
   }, []);
 
   const allowedActions = QUICK_ACTIONS.filter((a) => can(a.perm));
@@ -399,7 +405,7 @@ function QuickActionsMenu() {
 
       <AnimatePresence>
         {open && (
-          <motion.div initial={{ opacity: 0, y: -8, scale: 0.95 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: -8, scale: 0.95 }}
+          <motion.div initial={{ opacity: 0, y: -8, scale: 0.95 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: -8, scale: 0.95, pointerEvents: 'none' }}
             className="absolute right-0 top-full mt-2 w-60 bg-white rounded-2xl shadow-2xl border border-brand-choco/8 py-2 z-50 max-h-[70vh] overflow-y-auto">
             <p className="text-[10px] font-bold uppercase tracking-widest text-brand-choco-soft px-4 py-2">Quick Actions</p>
             {allowedActions.map((action) => (
@@ -422,16 +428,18 @@ function UserMenu({ userEmail, userName, userRole, onLogout }: {
   userEmail: string; userName: string; userRole: string | null; onLogout: () => void;
 }) {
   const [open, setOpen] = useState(false);
+  const menuLocation = useLocation();
+  useEffect(() => { setOpen(false); }, [menuLocation.key]);
   const navigate = useNavigate();
   const { can } = usePermission();
   const wrapRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    const onClickOutside = (e: MouseEvent) => {
+    const onClickOutside = (e: PointerEvent) => {
       if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) setOpen(false);
     };
-    document.addEventListener('mousedown', onClickOutside);
-    return () => document.removeEventListener('mousedown', onClickOutside);
+    document.addEventListener('pointerdown', onClickOutside);
+    return () => document.removeEventListener('pointerdown', onClickOutside);
   }, []);
 
   const initial = (userName?.[0] ?? userEmail?.[0] ?? '?').toUpperCase();
@@ -451,7 +459,7 @@ function UserMenu({ userEmail, userName, userRole, onLogout }: {
 
       <AnimatePresence>
         {open && (
-          <motion.div initial={{ opacity: 0, y: -8, scale: 0.95 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: -8, scale: 0.95 }}
+          <motion.div initial={{ opacity: 0, y: -8, scale: 0.95 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: -8, scale: 0.95, pointerEvents: 'none' }}
             className="absolute right-0 top-full mt-2 w-72 bg-white rounded-2xl shadow-2xl border border-brand-choco/8 overflow-hidden z-50">
             <div className="p-4 bg-gradient-to-br from-brand-orange-100 to-brand-cream-deep">
               <div className="flex items-center gap-3">
@@ -471,6 +479,13 @@ function UserMenu({ userEmail, userName, userRole, onLogout }: {
               </div>
             </div>
             <div className="p-2">
+              {can('dashboard.view') && (
+                <button type="button" onClick={() => { navigate('/'); setOpen(false); }}
+                  className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold text-brand-choco hover:bg-brand-cream-dark transition text-left">
+                  <div className="w-8 h-8 rounded-xl bg-brand-orange-100 flex items-center justify-center"><LayoutDashboard className="w-4 h-4 text-brand-orange" /></div>
+                  <div className="flex-1"><p className="text-sm font-bold leading-tight">Dashboard</p><p className="text-[10px] text-brand-choco-soft leading-tight mt-0.5">Overview and activity</p></div>
+                </button>
+              )}
               {can('audit.view') && (
                 <button onClick={() => { navigate('/audit'); setOpen(false); }}
                   className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold text-brand-choco hover:bg-brand-cream-dark transition text-left">
@@ -510,6 +525,17 @@ function SidebarContent({ onLogout, userEmail, userName, userRole, onNavigate }:
 }) {
   const { can } = usePermission();
 
+  const location = useLocation();
+  const navId = useId();
+  const currentSection = location.pathname.startsWith('/attendance') ? 'HRMS'
+    : location.pathname === '/' || ['/users', '/audit'].includes(location.pathname) ? null : 'Inventory';
+  const [expanded, setExpanded] = useState<Record<string, boolean>>(() => ({
+    Inventory: currentSection === 'Inventory', HRMS: currentSection === 'HRMS',
+  }));
+  useEffect(() => {
+    if (currentSection) setExpanded((previous) => ({ ...previous, [currentSection]: true }));
+  }, [location.pathname, currentSection]);
+
   const visibleSections = NAV_SECTIONS.map((section) => {
     const items = section.items
       .filter((item) => can(item.viewPerm))
@@ -522,35 +548,39 @@ function SidebarContent({ onLogout, userEmail, userName, userRole, onNavigate }:
 
   return (
     <>
-      <div className="p-6 pb-4 flex items-center justify-between">
-        <Logo variant="wide" size="lg" />
+      <div className="p-4 lg:p-6 pb-4 flex items-center justify-between gap-3">
+        <Logo variant="wide" size={onNavigate ? "md" : "lg"} className={onNavigate ? "min-w-0 max-w-[180px] flex-1" : "max-w-full"} />
         {onNavigate && (
-          <button onClick={onNavigate} className="lg:hidden w-8 h-8 rounded-lg hover:bg-brand-cream-dark flex items-center justify-center">
-            <X className="w-4 h-4" />
+          <button aria-label="Close navigation menu" onClick={onNavigate} className="lg:hidden w-11 h-11 shrink-0 rounded-xl border border-brand-choco/10 hover:bg-brand-cream-dark flex items-center justify-center">
+            <X className="w-5 h-5" />
           </button>
         )}
       </div>
       <div className="h-px bg-gradient-to-r from-transparent via-brand-choco/8 to-transparent mx-6" />
 
-      <nav className="flex-1 px-3 py-4 overflow-y-auto">
-        {visibleSections.map((section, sectionIdx) => (
-          <div key={section.title} className={cn(sectionIdx > 0 && 'mt-6')}>
-            <div className="mb-2 px-3">
-              <p className="text-[10px] font-bold uppercase tracking-widest text-brand-choco-soft">{section.title}</p>
+      <nav aria-label="Main navigation" className="flex-1 min-h-0 px-3 py-4 overflow-y-auto space-y-3">
+        {visibleSections.map((section) => {
+          const isOpen = !!expanded[section.title];
+          const SectionIcon = section.title === 'Inventory' ? Boxes : CalendarIcon;
+          const panelId = `${navId}-${section.title.toLowerCase()}`;
+          return (
+            <div key={section.title}>
+              <button type="button" aria-expanded={isOpen} aria-controls={panelId}
+                onClick={() => setExpanded((previous) => ({ ...previous, [section.title]: !previous[section.title] }))}
+                className={cn('flex items-center gap-3 w-full rounded-2xl px-3 py-3.5 text-left font-bold transition-colors focus-visible:outline-2 focus-visible:outline-brand-orange',
+                  currentSection === section.title ? 'bg-brand-orange-50 text-brand-orange-dark' : 'text-brand-choco hover:bg-brand-cream-dark')}>
+                <SectionIcon className="w-5 h-5 shrink-0" />
+                <span className="flex-1">{section.title}</span>
+                <ChevronDown className={cn('w-4 h-4 transition-transform', isOpen && 'rotate-180')} />
+              </button>
+              <div id={panelId} hidden={!isOpen} className="mt-2 ml-2 pl-2 border-l border-brand-choco/10 space-y-1">
+                {section.items.map((item) => (
+                  <SidebarNavItem key={item.to} item={item} onNavigate={onNavigate} />
+                ))}
+              </div>
             </div>
-            <div className="space-y-1">
-              {section.items.map((item, idx) => (
-                <motion.div key={item.to} initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }}
-                  transition={{ delay: (sectionIdx * 3 + idx) * 0.02 }} className="space-y-1">
-                  <SidebarNavItem item={item} onNavigate={onNavigate} />
-                  {item.children?.map((child) => (
-                    <SidebarNavItem key={child.to} item={child} onNavigate={onNavigate} indent />
-                  ))}
-                </motion.div>
-              ))}
-            </div>
-          </div>
-        ))}
+          );
+        })}
       </nav>
 
       <div className="p-4 mt-4">

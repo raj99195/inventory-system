@@ -21,6 +21,10 @@ export function usePermission() {
   const can = (perm: string): boolean => {
     if (!userDoc || !userDoc.active) return false;
     if (userDoc.role === 'super_admin') return true;
+    // Older employee records inherited dashboard access despite having no inventory access.
+    if (perm === 'dashboard.view' && userDoc.role === 'employee' &&
+        !['products.view', 'kits.view', 'stock.view', 'invoices.view', 'quotations.view', 'assets.view', 'assignments.view']
+          .some((key) => hasPermission(userDoc.permissions, key))) return false;
     return hasPermission(userDoc.permissions, perm);
   };
 

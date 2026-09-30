@@ -33,15 +33,12 @@ export default function RequestAssetPage() {
   const { userDoc } = useAuth();
   const { can } = usePermission();
   const { assets, loading: loadingA } = useAssets();
-  const { products, loading: loadingP } = useProducts();
+  const { products, loading: loadingP, error: productsError } = useProducts();
 
   const [tab, setTab] = useState<Tab>('assets');
   const [search, setSearch] = useState('');
   const [selected, setSelected] = useState<SelectedItem | null>(null);
 
-  if (!can('requests.createOwn')) {
-    return <Navigate to="/" replace />;
-  }
 
   // Only show available assets
   const availableAssets = useMemo(
@@ -49,9 +46,9 @@ export default function RequestAssetPage() {
     [assets]
   );
 
-  // Only show products with stock > 0
-  const inStockProducts = useMemo(
-    () => products.filter((p) => (p.currentStock ?? 0) > 0 && p.status === 'active'),
+  // Show the catalog, with unavailable products clearly marked.
+  const activeProducts = useMemo(
+    () => products.filter((p) => p.status === 'active'),
     [products]
   );
 
@@ -69,15 +66,19 @@ export default function RequestAssetPage() {
   }, [availableAssets, search]);
 
   const filteredProducts = useMemo(() => {
-    if (!search) return inStockProducts;
+    if (!search) return activeProducts;
     const q = search.toLowerCase();
-    return inStockProducts.filter(
+    return activeProducts.filter(
       (p) =>
         p.name.toLowerCase().includes(q) ||
         p.sku.toLowerCase().includes(q) ||
         p.category.toLowerCase().includes(q)
     );
-  }, [inStockProducts, search]);
+  }, [activeProducts, search]);
+
+  if (!can('requests.createOwn')) {
+    return <Navigate to="/" replace />;
+  }
 
   const loading = loadingA || loadingP;
 
@@ -97,7 +98,7 @@ export default function RequestAssetPage() {
       {/* Tabs */}
       <div className="flex gap-1 border-b border-brand-choco/10">
         <TabButton active={tab === 'assets'} onClick={() => setTab('assets')} icon={Laptop} label="Assets" count={availableAssets.length} />
-        <TabButton active={tab === 'products'} onClick={() => setTab('products')} icon={Package} label="Products" count={inStockProducts.length} />
+        {/* Product requests are temporarily hidden. */}
       </div>
 
       {/* Search */}
@@ -114,8 +115,13 @@ export default function RequestAssetPage() {
         </div>
       </div>
 
+      {tab === 'products' && !loadingP && !productsError && (
+        <p className="text-sm text-brand-choco-soft">{activeProducts.length} products in catalog · {activeProducts.filter((p) => p.currentStock > 0).length} in stock. Out-of-stock products become requestable once stock is added.</p>
+      )}
       {/* Content */}
-      {loading ? (
+      {tab === 'products' && productsError ? (
+        <p role="alert" className="card text-red-600">Unable to load products. Please reload and try again.</p>
+      ) : loading ? (
         <div className="flex items-center justify-center p-12">
           <Loader2 className="w-6 h-6 animate-spin text-brand-orange" />
         </div>
@@ -143,10 +149,10 @@ export default function RequestAssetPage() {
       ) : filteredProducts.length === 0 ? (
         <EmptyState
           icon={Package}
-          title={inStockProducts.length === 0 ? 'No products in stock' : 'No matches'}
+          title={activeProducts.length === 0 ? 'No active products' : 'No matches'}
           description={
-            inStockProducts.length === 0
-              ? 'No products currently have stock available.'
+            activeProducts.length === 0
+              ? 'No active products are currently in the catalog.'
               : 'Try a different search term.'
           }
         />
@@ -264,9 +270,9 @@ function ProductCard({ product, onRequest }: { product: Product; onRequest: () =
         </div>
       </div>
 
-      <button onClick={onRequest} className="btn-primary w-full">
+      <button onClick={onRequest} disabled={!(product.currentStock > 0)} className="btn-primary w-full disabled:opacity-50 disabled:cursor-not-allowed">
         <Send className="w-4 h-4" />
-        Request
+        {product.currentStock > 0 ? 'Request' : 'Out of stock'}
       </button>
     </div>
   );

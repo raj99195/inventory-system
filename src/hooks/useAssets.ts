@@ -17,18 +17,20 @@ import { logAudit } from '@/lib/audit';
 
 const COL = 'assets';
 
-export function useAssets() {
+export function useAssets(enabled = true) {
   const [assets, setAssets] = useState<Asset[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    if (!enabled) { setAssets([]); setLoading(false); return; }
+    setLoading(true);
     const q = query(collection(db, COL), orderBy('createdAt', 'desc'));
     const unsub = onSnapshot(q, (snap) => {
       setAssets(snap.docs.map((d) => ({ id: d.id, ...d.data() } as Asset)));
       setLoading(false);
     });
     return unsub;
-  }, []);
+  }, [enabled]);
 
   return { assets, loading };
 }

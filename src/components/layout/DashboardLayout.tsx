@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useId } from 'react';
+import { useState, useRef, useEffect, useId, Suspense } from 'react';
 import { Outlet, NavLink, useNavigate, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -188,7 +188,7 @@ export default function DashboardLayout() {
           </header>
 
           <main className="flex-1 p-4 lg:p-8">
-            <Outlet />
+            <Suspense fallback={<div role="status" className="p-6 text-brand-choco-soft">Loading page...</div>}><Outlet /></Suspense>
           </main>
         </div>
       </div>
@@ -285,7 +285,7 @@ function GlobalSearch() {
   const navigate = useNavigate();
   const wrapRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
-  const { results } = useGlobalSearch(query);
+  const { results } = useGlobalSearch(open ? query : '');
 
   useEffect(() => {
     const onClickOutside = (e: PointerEvent) => {

@@ -1,4 +1,5 @@
-import { useMemo } from 'react';
+import { useMemo, useState, useEffect } from 'react';
+import { usePermission } from './usePermission';
 import { useProducts } from './useProducts';
 import { useAssets } from './useAssets';
 import { useEmployees } from './useEmployees';
@@ -14,14 +15,21 @@ export interface SearchResult {
 }
 
 export function useGlobalSearch(query: string) {
-  const { products } = useProducts();
-  const { assets } = useAssets();
-  const { employees } = useEmployees();
-  const { invoices } = useInvoices(100);
+  const { can } = usePermission();
+  const [debouncedQuery, setDebouncedQuery] = useState('');
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedQuery(query.trim()), 250);
+    return () => clearTimeout(timer);
+  }, [query]);
+  const enabled = debouncedQuery.length >= 2 && query.trim().length >= 2;
+  const { products } = useProducts(enabled && can('products.view'));
+  const { assets } = useAssets(enabled && can('assets.view'));
+  const { employees } = useEmployees(enabled && can('employees.view'));
+  const { invoices } = useInvoices(100, enabled && can('invoices.view'));
 
   const results = useMemo<SearchResult[]>(() => {
-    const q = query.trim().toLowerCase();
-    if (!q || q.length < 2) return [];
+    const q = debouncedQuery.toLowerCase();
+    if (!enabled || !q || q.length < 2) return [];
 
     const out: SearchResult[] = [];
 
@@ -105,7 +113,7 @@ export function useGlobalSearch(query: string) {
       );
 
     return out;
-  }, [query, products, assets, employees, invoices]);
+  }, [debouncedQuery, enabled, products, assets, employees, invoices]);
 
   return { results };
 }

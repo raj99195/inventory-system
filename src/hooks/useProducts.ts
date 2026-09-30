@@ -17,12 +17,14 @@ import { logAudit } from '@/lib/audit';
 
 const COL = 'products';
 
-export function useProducts() {
+export function useProducts(enabled = true) {
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
 
   useEffect(() => {
+    if (!enabled) { setProducts([]); setLoading(false); return; }
+    setLoading(true);
     const q = query(collection(db, COL), orderBy('createdAt', 'desc'));
     const unsub = onSnapshot(
       q,
@@ -39,7 +41,7 @@ export function useProducts() {
       }
     );
     return unsub;
-  }, []);
+  }, [enabled]);
 
   return { products, loading, error };
 }

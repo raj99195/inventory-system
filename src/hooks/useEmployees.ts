@@ -17,11 +17,13 @@ import { logAudit } from '@/lib/audit';
 
 const COL = 'employees';
 
-export function useEmployees() {
+export function useEmployees(enabled = true) {
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    if (!enabled) { setEmployees([]); setLoading(false); return; }
+    setLoading(true);
     const q = query(collection(db, COL), orderBy('createdAt', 'desc'));
     const unsub = onSnapshot(q, (snap) => {
       setEmployees(
@@ -30,7 +32,7 @@ export function useEmployees() {
       setLoading(false);
     });
     return unsub;
-  }, []);
+  }, [enabled]);
 
   return { employees, loading };
 }

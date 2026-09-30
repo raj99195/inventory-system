@@ -20,11 +20,13 @@ import { logAudit } from '@/lib/audit';
 
 const COL = 'invoices';
 
-export function useInvoices(limitCount = 200) {
+export function useInvoices(limitCount = 200, enabled = true) {
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    if (!enabled) { setInvoices([]); setLoading(false); return; }
+    setLoading(true);
     const q = query(
       collection(db, COL),
       orderBy('uploadedAt', 'desc'),
@@ -37,7 +39,7 @@ export function useInvoices(limitCount = 200) {
       setLoading(false);
     });
     return unsub;
-  }, [limitCount]);
+  }, [limitCount, enabled]);
 
   return { invoices, loading };
 }

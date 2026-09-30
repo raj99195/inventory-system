@@ -11,14 +11,7 @@ import {
   signOut,
   type User as FirebaseUser,
 } from 'firebase/auth';
-import {
-  doc,
-  onSnapshot,
-  setDoc,
-  serverTimestamp,
-  getDoc,
-} from 'firebase/firestore';
-import { auth, db } from '@/lib/firebase';
+import { auth } from '@/lib/firebaseAuth';
 import {
   BOOTSTRAP_SUPER_ADMIN_UID,
   SUPER_ADMIN_PRESET,
@@ -48,102 +41,49 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [ready, setReady] = useState(false);
   const [noAccess, setNoAccess] = useState(false);
 
-  // Listen for Firebase auth changes and bootstrap super admin doc if needed
+  // Load database code only once a Firebase session exists.
   useEffect(() => {
-    const unsub = onAuthStateChanged(auth, async (fbUser) => {
-      setUser(fbUser);
-      setReady(false);
-
-      if (!fbUser) {
-        setUserDoc(null);
-        setNoAccess(false);
-        setLoading(false);
-        setReady(true);
-        return;
-      }
-
-      // BOOTSTRAP: if this is Raj and no user doc exists, create one with super_admin role.
-      if (fbUser.uid === BOOTSTRAP_SUPER_ADMIN_UID) {
-        try {
-          const ref = doc(db, 'users', fbUser.uid);
+    let generation = 0;
+    let stopProfile: (() => void) | undefined;
+    const stopAuth = onAuthStateChanged(auth, async (fbUser) => {
+      const current = ++generation;
+      stopProfile?.(); stopProfile = undefined;
+      setUser(fbUser); setUserDoc(null); setNoAccess(false);
+      setLoading(!!fbUser); setReady(!fbUser);
+      if (!fbUser) return;
+      const fail = () => {
+        if (current !== generation) return;
+        setUserDoc(null); setNoAccess(true); setLoading(false); setReady(true);
+      };
+      try {
+        const [{ db }, { doc, getDoc, setDoc, serverTimestamp, onSnapshot }] = await Promise.all([
+          import('@/lib/firebase'), import('firebase/firestore'),
+        ]);
+        if (current !== generation) return;
+        const ref = doc(db, 'users', fbUser.uid);
+        if (fbUser.uid === BOOTSTRAP_SUPER_ADMIN_UID) {
           const snap = await getDoc(ref);
-          if (!snap.exists()) {
-            console.info('[Auth] Bootstrapping super admin doc for', fbUser.email);
-            await setDoc(ref, {
-              uid: fbUser.uid,
-              email: fbUser.email ?? '',
-              name: fbUser.displayName ?? 'Super Admin',
-              role: 'super_admin',
-              permissions: SUPER_ADMIN_PRESET,
-              active: true,
-              createdAt: serverTimestamp(),
-              createdBy: fbUser.uid,
-              updatedAt: serverTimestamp(),
-            });
-            console.info('[Auth] Bootstrap done ✓');
-          }
-        } catch (err) {
-          console.error(
-            '[Auth] Failed to bootstrap super admin doc:',
-            err
-          );
-          // Don't block — the snapshot listener will retry
+          if (current !== generation) return;
+          if (!snap.exists()) await setDoc(ref, {
+            uid: fbUser.uid, email: fbUser.email ?? '', name: fbUser.displayName ?? 'Super Admin',
+            role: 'super_admin', permissions: SUPER_ADMIN_PRESET, active: true,
+            createdAt: serverTimestamp(), createdBy: fbUser.uid, updatedAt: serverTimestamp(),
+          });
         }
-      }
+        if (current !== generation) return;
+        stopProfile = onSnapshot(ref, snap => {
+          if (current !== generation) return;
+          if (snap.exists()) {
+            const raw = snap.data();
+            setUserDoc({ ...raw, uid: snap.id, permissions: normalizePermissions(raw.permissions) } as AppUser);
+            setNoAccess(false);
+          } else { setUserDoc(null); setNoAccess(true); }
+          setLoading(false); setReady(true);
+        }, fail);
+      } catch { fail(); }
     });
-    return unsub;
+    return () => { generation++; stopAuth(); stopProfile?.(); };
   }, []);
-
-  // Live-subscribe to the current user's doc for permission changes
-  useEffect(() => {
-    if (!user) {
-      setUserDoc(null);
-      setNoAccess(false);
-      setLoading(false);
-      setReady(true);
-      return;
-    }
-
-    const ref = doc(db, 'users', user.uid);
-    const unsub = onSnapshot(
-      ref,
-      (snap) => {
-        if (snap.exists()) {
-          const raw = snap.data();
-          // Normalize permissions to guard against legacy user docs that
-          // lack the newer attendance/leaves/schools/settings modules.
-          // Without this, `perms.attendance.markOwn` etc. throw on undefined.
-          const normalized: AppUser = {
-            uid: snap.id,
-            ...raw,
-            permissions: normalizePermissions(raw.permissions),
-          } as AppUser;
-          setUserDoc(normalized);
-          setNoAccess(false);
-        } else {
-          // Signed in but no user doc — user isn't provisioned in this system
-          console.warn(
-            '[Auth] Signed in but no user doc for uid',
-            user.uid,
-            '— user has NO permissions.'
-          );
-          setUserDoc(null);
-          setNoAccess(true);
-        }
-        setLoading(false);
-        setReady(true);
-      },
-      (err) => {
-        console.error('[Auth] userDoc snapshot error:', err);
-        // On permission-denied, mark as noAccess so the app can react
-        setUserDoc(null);
-        setNoAccess(true);
-        setLoading(false);
-        setReady(true);
-      }
-    );
-    return unsub;
-  }, [user]);
 
   const signIn = async (email: string, password: string) => {
     await signInWithEmailAndPassword(auth, email, password);

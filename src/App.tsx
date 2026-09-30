@@ -1,40 +1,41 @@
+import { lazy, Suspense } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { useAuth } from './contexts/AuthContext';
 import { usePermission } from './hooks/usePermission';
 import LoginPage from './pages/LoginPage';
-import DashboardLayout from './components/layout/DashboardLayout';
-import DashboardPage from './pages/DashboardPage';
-import ProductsPage from './pages/ProductsPage';
-import KitsPage from './pages/KitsPage';
-import StockPage from './pages/StockPage';
-import InvoicesPage from './pages/InvoicesPage';
-import EmployeesPage from './pages/EmployeesPage';
-import AssetsPage from './pages/AssetsPage';
-import AssignmentsPage from './pages/AssignmentsPage';
-import AuditPage from './pages/AuditPage';
-import UsersPage from './pages/UsersPage';
-import NoAccessPage from './pages/NoAccessPage';
+const DashboardLayout = lazy(() => import('./components/layout/DashboardLayout'));
+const DashboardPage = lazy(() => import('./pages/DashboardPage'));
+const ProductsPage = lazy(() => import('./pages/ProductsPage'));
+const KitsPage = lazy(() => import('./pages/KitsPage'));
+const StockPage = lazy(() => import('./pages/StockPage'));
+const InvoicesPage = lazy(() => import('./pages/InvoicesPage'));
+const EmployeesPage = lazy(() => import('./pages/EmployeesPage'));
+const AssetsPage = lazy(() => import('./pages/AssetsPage'));
+const AssignmentsPage = lazy(() => import('./pages/AssignmentsPage'));
+const AuditPage = lazy(() => import('./pages/AuditPage'));
+const UsersPage = lazy(() => import('./pages/UsersPage'));
+const NoAccessPage = lazy(() => import('./pages/NoAccessPage'));
 import LoadingScreen from './components/ui/LoadingScreen';
-import QuotationsPage from '@/pages/QuotationsPage';
+const QuotationsPage = lazy(() => import('@/pages/QuotationsPage'));
 
 // ─── Attendance pages ─────────────────────────────────
-import HolidayCalendarPage from '@/pages/attendance/HolidayCalendarPage';
-import AttendanceHomePage from '@/pages/attendance/AttendanceHomePage';
-import MarkAttendancePage from '@/pages/attendance/MarkAttendancePage';
-import MyAttendancePage from '@/pages/attendance/MyAttendancePage';
-import ApplyLeavePage from '@/pages/attendance/ApplyLeavePage';
-import MyLeavesPage from '@/pages/attendance/MyLeavesPage';
-import AttendanceAdminDashboardPage from '@/pages/attendance/admin/AttendanceAdminDashboardPage';
-import AttendanceViewPage from '@/pages/attendance/admin/AttendanceViewPage';
-import LeaveApprovalsPage from '@/pages/attendance/admin/LeaveApprovalsPage';
-import SchoolsPage from '@/pages/attendance/admin/SchoolsPage';
-import SchoolActionPage from '@/pages/attendance/admin/SchoolActionPage';
-import AttendanceSettingsPage from '@/pages/attendance/admin/AttendanceSettingsPage';
+const HolidayCalendarPage = lazy(() => import('@/pages/attendance/HolidayCalendarPage'));
+const AttendanceHomePage = lazy(() => import('@/pages/attendance/AttendanceHomePage'));
+const MarkAttendancePage = lazy(() => import('@/pages/attendance/MarkAttendancePage'));
+const MyAttendancePage = lazy(() => import('@/pages/attendance/MyAttendancePage'));
+const ApplyLeavePage = lazy(() => import('@/pages/attendance/ApplyLeavePage'));
+const MyLeavesPage = lazy(() => import('@/pages/attendance/MyLeavesPage'));
+const AttendanceAdminDashboardPage = lazy(() => import('@/pages/attendance/admin/AttendanceAdminDashboardPage'));
+const AttendanceViewPage = lazy(() => import('@/pages/attendance/admin/AttendanceViewPage'));
+const LeaveApprovalsPage = lazy(() => import('@/pages/attendance/admin/LeaveApprovalsPage'));
+const SchoolsPage = lazy(() => import('@/pages/attendance/admin/SchoolsPage'));
+const SchoolActionPage = lazy(() => import('@/pages/attendance/admin/SchoolActionPage'));
+const AttendanceSettingsPage = lazy(() => import('@/pages/attendance/admin/AttendanceSettingsPage'));
 
 // ─── Request pages ────────────────────────────────────
-import MyRequestsPage from '@/pages/requests/MyRequestsPage';
-import RequestAssetPage from '@/pages/requests/RequestAssetPage';
-import RequestApprovalsPage from '@/pages/requests/admin/RequestApprovalsPage';
+const MyRequestsPage = lazy(() => import('@/pages/requests/MyRequestsPage'));
+const RequestAssetPage = lazy(() => import('@/pages/requests/RequestAssetPage'));
+const RequestApprovalsPage = lazy(() => import('@/pages/requests/admin/RequestApprovalsPage'));
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, loading, ready, noAccess } = useAuth();
@@ -51,7 +52,7 @@ function DashboardEntry() {
 
 export default function App() {
   return (
-    <Routes>
+    <Suspense fallback={<LoadingScreen />}><Routes>
       <Route path="/login" element={<LoginPage />} />
       <Route
         path="/"
@@ -103,6 +104,6 @@ export default function App() {
         <Route path="requests/admin" element={<RequestApprovalsPage />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
-    </Routes>
+    </Routes></Suspense>
   );
 }

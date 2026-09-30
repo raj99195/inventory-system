@@ -1,3 +1,4 @@
+import { lazy, Suspense } from 'react';
 import {
   createContext,
   useContext,
@@ -5,14 +6,14 @@ import {
   type ReactNode,
 } from 'react';
 import Modal from '@/components/ui/Modal';
-import ProductForm from '@/components/products/ProductForm';
-import KitForm from '@/components/kits/KitForm';
-import UserForm from '@/components/users/UserForm';
-import StockTransactionForm from '@/components/stock/StockTransactionForm';
-import InvoiceUploadFlow from '@/components/invoices/InvoiceUploadFlow';
-import EmployeeForm from '@/components/employees/EmployeeForm';
-import AssetForm from '@/components/assets/AssetForm';
-import AssignForm from '@/components/assignments/AssignForm';
+const ProductForm = lazy(() => import('@/components/products/ProductForm'));
+const KitForm = lazy(() => import('@/components/kits/KitForm'));
+const UserForm = lazy(() => import('@/components/users/UserForm'));
+const StockTransactionForm = lazy(() => import('@/components/stock/StockTransactionForm'));
+const InvoiceUploadFlow = lazy(() => import('@/components/invoices/InvoiceUploadFlow'));
+const EmployeeForm = lazy(() => import('@/components/employees/EmployeeForm'));
+const AssetForm = lazy(() => import('@/components/assets/AssetForm'));
+const AssignForm = lazy(() => import('@/components/assignments/AssignForm'));
 
 /**
  * All modules whose "quick add" opens a global modal on the current page
@@ -65,6 +66,7 @@ export function QuickAddProvider({ children }: { children: ReactNode }) {
     <QuickAddContext.Provider value={{ current, open, close, supports }}>
       {children}
 
+      <Suspense fallback={<div role="status" className="fixed bottom-4 right-4 z-50 rounded-xl bg-white p-4 shadow-lg">Loading form...</div>}>
       {/* ============= PRODUCTS ============= */}
       <Modal
         open={current === 'products'}
@@ -164,6 +166,7 @@ export function QuickAddProvider({ children }: { children: ReactNode }) {
       >
         {current === 'users' && <UserForm user={null} onClose={close} />}
       </Modal>
+      </Suspense>
     </QuickAddContext.Provider>
   );
 }

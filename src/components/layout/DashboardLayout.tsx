@@ -44,6 +44,7 @@ import { ROLE_LABELS, hrmsHomePath } from '@/lib/permissions';
 import { cn } from '@/lib/utils';
 import toast from 'react-hot-toast';
 import Logo from '@/components/ui/Logo';
+import { AttendanceReminderProvider } from '@/contexts/AttendanceReminderContext';
 
 interface NavItem {
   to: string;
@@ -71,6 +72,10 @@ function navGroup(item: NavItem, section: string, can: (permission: string) => b
     return item.to.startsWith('/attendance/admin') || ['/employees', '/users', '/audit'].includes(item.to) ? 'Management' : 'Personal';
   }
   if (item.to.startsWith('/requests')) return 'Requests';
+  if (item.to.startsWith('/office-')) {
+    const module = item.to === '/office-assets' ? 'officeAssets' : 'officeInventory';
+    return ['create', 'edit', 'delete', 'assign', 'return'].some((action) => can(`${module}.${action}`)) ? 'Office Management' : 'Personal';
+  }
   if (['/assets', '/assignments'].includes(item.to)) return 'Asset Management';
   if (['/invoices', '/quotations'].includes(item.to)) return 'Finance';
   return 'Stock & Products';
@@ -80,6 +85,8 @@ const NAV_SECTIONS: NavSection[] = [
   {
     title: 'Inventory',
     items: [
+      { to: '/office-inventory', label: 'Office Inventory', icon: Package, viewPerm: 'officeInventory.view' },
+      { to: '/office-assets', label: 'Office Assets', icon: Laptop, viewPerm: 'officeAssets.view' },
       { to: '/products', label: 'Products', icon: Package, viewPerm: 'products.view', createPerm: 'products.create', quickAddType: 'products' },
       { to: '/kits', label: 'Kits', icon: Boxes, viewPerm: 'kits.view', createPerm: 'kits.create', quickAddType: 'kits' },
       { to: '/stock', label: 'Stock Movement', icon: ArrowLeftRight, viewPerm: 'stock.view', createPerm: 'stock.stockIn', quickAddType: 'stock' },
@@ -100,10 +107,12 @@ const NAV_SECTIONS: NavSection[] = [
       { to: '/attendance/holidays', label: 'Holiday Calendar', icon: CalendarIcon, viewPerm: 'attendance.viewOwn' },
       { to: '/attendance/my', label: 'My History', icon: CalendarIcon, viewPerm: 'attendance.viewOwn' },
       { to: '/attendance/leaves', label: 'My Leaves', icon: ClipboardList, viewPerm: 'leaves.viewOwn' },
+      { to: '/attendance/reimbursements', label: 'My Reimbursements', icon: Receipt, viewPerm: 'reimbursements.viewOwn' },
 
       { to: '/attendance/admin', label: 'Team Dashboard', icon: Building2, end: true, viewPerm: 'attendance.viewAll' },
       { to: '/attendance/admin/view', label: 'Team Attendance', icon: CalendarIcon, viewPerm: 'attendance.viewAll' },
       { to: '/attendance/admin/leaves', label: 'Leave Approvals', icon: ClipboardList, viewPerm: 'leaves.viewAll' },
+      { to: '/attendance/admin/reimbursements', label: 'Reimbursements', icon: Receipt, viewPerm: 'reimbursements.viewAll' },
       { to: '/attendance/admin/schools', label: 'Schools', icon: SchoolIcon, viewPerm: 'schools.view', createPerm: 'schools.create' },
       { to: '/attendance/admin/settings', label: 'Settings', icon: SettingsIcon, viewPerm: 'settings.view' },
     ],
@@ -157,10 +166,10 @@ export default function DashboardLayout() {
   const pageTitle = getPageTitle(location.pathname);
 
   return (
-    <QuickAddProvider>
+    <AttendanceReminderProvider><QuickAddProvider>
       <div className="min-h-screen bg-brand-cream flex">
         <aside className="hidden lg:flex lg:flex-col w-72 bg-white border-r border-brand-choco/5 sticky top-0 h-screen">
-          <SidebarContent onLogout={handleLogout} userEmail={user?.email ?? ''} userName={userDoc?.name ?? 'User'} userRole={userDoc?.role ?? null} />
+          <SidebarContent />
         </aside>
 
         {/* Unmount the drawer and backdrop together; no exiting overlay can intercept taps. */}
@@ -169,7 +178,7 @@ export default function DashboardLayout() {
             <button type="button" aria-label="Close navigation menu" onClick={() => setSidebarOpen(false)}
               className="absolute inset-0 w-full h-full bg-brand-choco/40" />
             <aside id="mobile-navigation" className="absolute inset-y-0 left-0 w-72 max-w-[85vw] bg-white flex flex-col overscroll-contain">
-              <SidebarContent onLogout={handleLogout} userEmail={user?.email ?? ''} userName={userDoc?.name ?? 'User'} userRole={userDoc?.role ?? null}
+              <SidebarContent
                 onNavigate={() => setSidebarOpen(false)} />
             </aside>
           </div>
@@ -177,27 +186,26 @@ export default function DashboardLayout() {
 
         <div className="flex-1 flex flex-col min-w-0">
           <header className="sticky top-0 z-30 bg-brand-cream/70 backdrop-blur-xl border-b border-brand-choco/5">
-            <div className="flex items-center gap-3 px-4 lg:px-8 h-20">
+            <div className="flex items-center gap-2 sm:gap-3 px-4 lg:px-8 h-20 min-w-0">
               <button type="button" aria-label="Open navigation menu" aria-expanded={sidebarOpen} aria-controls="mobile-navigation" onClick={() => setSidebarOpen(true)}
                 className="lg:hidden w-11 h-11 shrink-0 rounded-2xl bg-white border border-brand-choco/8 flex items-center justify-center hover:bg-brand-cream-dark transition">
                 <Menu className="w-5 h-5" />
               </button>
 
-              <NavLink to={hrmsHomePath(userDoc)} aria-label="HRMS Home" className="lg:hidden w-11 h-11 shrink-0 rounded-2xl bg-white border border-brand-choco/8 flex items-center justify-center">
+              <NavLink to={hrmsHomePath(userDoc)} aria-label="HRMS Home" className="hidden min-[360px]:flex lg:hidden w-11 h-11 shrink-0 rounded-2xl bg-white border border-brand-choco/8 items-center justify-center">
                 <HomeIcon className="w-5 h-5" />
               </NavLink>
 
-              <div className="hidden lg:flex flex-col mr-2">
+              <ModuleSwitcher />
+
+              <div className="hidden lg:block flex-1" />
+
+              <div className="hidden lg:flex flex-col mr-2 min-w-0">
                 <span className="text-[10px] font-bold uppercase tracking-widest text-brand-choco-soft">
                   {pageTitle.category}
                 </span>
                 <h2 className="font-display font-bold text-lg leading-tight">{pageTitle.title}</h2>
               </div>
-
-              <div className="flex-1" />
-              <select aria-label="Select module" value={isHrmsPath(location.pathname) ? 'HRMS' : 'Inventory'} onChange={(e) => navigate(e.target.value === 'HRMS' ? hrmsHomePath(userDoc) : '/inventory')} className="h-11 px-3 rounded-xl bg-white border border-brand-choco/10 text-sm font-bold">
-                <option value="HRMS">HRMS</option><option value="Inventory">Inventory</option>
-              </select>
 
               <GlobalSearch />
               <QuickActionsMenu />
@@ -210,8 +218,65 @@ export default function DashboardLayout() {
           </main>
         </div>
       </div>
-    </QuickAddProvider>
+    </QuickAddProvider></AttendanceReminderProvider>
   );
+}
+
+function ModuleSwitcher() {
+  const { userDoc } = useAuth();
+  const navigate = useNavigate();
+  const location = useLocation();
+  const [open, setOpen] = useState(false);
+  const wrapRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const optionsRef = useRef<(HTMLButtonElement | null)[]>([]);
+  const menuId = useId();
+  const selected = isHrmsPath(location.pathname) ? 'HRMS' : 'Inventory';
+  const options = [
+    { label: 'HRMS', description: 'Attendance, leaves & team', icon: CalendarIcon, to: hrmsHomePath(userDoc) },
+    { label: 'Inventory', description: 'Stock, assets & requests', icon: Boxes, to: '/inventory' },
+  ];
+  const SelectedIcon = selected === 'HRMS' ? CalendarIcon : Boxes;
+
+  useEffect(() => { setOpen(false); }, [location.key]);
+  useEffect(() => {
+    if (!open) return;
+    const outside = (event: PointerEvent) => {
+      if (!wrapRef.current?.contains(event.target as Node)) setOpen(false);
+    };
+    document.addEventListener('pointerdown', outside);
+    optionsRef.current[selected === 'HRMS' ? 0 : 1]?.focus();
+    return () => document.removeEventListener('pointerdown', outside);
+  }, [open, selected]);
+
+  return <div ref={wrapRef} className="sm:relative shrink-0" onKeyDown={(event) => {
+    if (event.key === 'Escape' && open) { event.preventDefault(); setOpen(false); triggerRef.current?.focus(); }
+    if (event.key === 'Tab') setOpen(false);
+    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+      event.preventDefault();
+      if (!open) { setOpen(true); return; }
+      const current = optionsRef.current.findIndex((button) => button === document.activeElement);
+      const next = event.key === 'ArrowDown' ? (current + 1) % options.length : (current + options.length - 1) % options.length;
+      optionsRef.current[next]?.focus();
+    }
+  }}>
+    <button ref={triggerRef} type="button" aria-label={`Switch module, current module ${selected}`} aria-haspopup="menu" aria-expanded={open} aria-controls={open ? menuId : undefined} onClick={() => setOpen((previous) => !previous)}
+      className={cn('flex items-center gap-2 sm:gap-3 h-12 px-2 sm:px-3 rounded-2xl bg-white border shadow-sm transition focus-visible:outline-2 focus-visible:outline-brand-orange', open ? 'border-brand-orange/50 ring-2 ring-brand-orange/10' : 'border-brand-choco/10 hover:border-brand-orange/40 hover:shadow-md')}>
+      <span className="hidden sm:flex w-8 h-8 rounded-xl bg-brand-orange-50 text-brand-orange items-center justify-center"><SelectedIcon className="w-4 h-4" /></span>
+      <span className="text-left"><span className="hidden sm:block text-[9px] font-bold uppercase tracking-widest text-brand-choco-soft leading-tight">Workspace</span><span className="block text-sm font-bold text-brand-choco">{selected}</span></span>
+      <ChevronDown className={cn('w-4 h-4 text-brand-choco-soft transition-transform', open && 'rotate-180')} />
+    </button>
+    {open && <div id={menuId} role="menu" aria-label="Choose workspace" className="absolute left-4 right-4 sm:left-0 sm:right-auto top-full mt-2 sm:w-64 max-w-[calc(100vw-2rem)] rounded-2xl bg-white border border-brand-choco/10 shadow-2xl p-2 z-50">
+      <p className="px-3 py-2 text-[10px] uppercase tracking-widest font-bold text-brand-choco-soft">Switch workspace</p>
+      {options.map((option, index) => <button key={option.label} ref={(element) => { optionsRef.current[index] = element; }} type="button" role="menuitemradio" aria-checked={selected === option.label} tabIndex={-1}
+        onClick={() => { setOpen(false); triggerRef.current?.focus(); if (location.pathname !== option.to) navigate(option.to); }}
+        className={cn('w-full flex items-center gap-3 rounded-xl px-3 py-3 text-left transition focus-visible:outline-2 focus-visible:outline-brand-orange', selected === option.label ? 'bg-brand-orange-50' : 'hover:bg-brand-cream-dark')}>
+        <span className={cn('w-9 h-9 rounded-xl flex items-center justify-center shrink-0', selected === option.label ? 'bg-brand-orange text-white' : 'bg-brand-cream-dark text-brand-choco-soft')}><option.icon className="w-4 h-4" /></span>
+        <span className="flex-1"><span className="block text-sm font-bold">{option.label}</span><span className="block mt-0.5 text-[10px] text-brand-choco-soft">{option.description}</span></span>
+        {selected === option.label && <span aria-hidden="true" className="w-2 h-2 rounded-full bg-brand-orange" />}
+      </button>)}
+    </div>}
+  </div>;
 }
 
 function getPageTitle(path: string) {
@@ -222,6 +287,8 @@ function getPageTitle(path: string) {
   const map: Record<string, { category: string; title: string }> = {
     '/': { category: 'Overview', title: 'Dashboard' },
     '/inventory': { category: 'Inventory', title: 'Overview' },
+    '/office-assets': { category: 'Inventory', title: 'Office Assets' },
+    '/office-inventory': { category: 'Inventory', title: 'Office Inventory' },
     '/products': { category: 'Inventory', title: 'Products' },
     '/kits': { category: 'Inventory', title: 'Kits' },
     '/stock': { category: 'Inventory', title: 'Stock Movement' },
@@ -243,6 +310,8 @@ function getPageTitle(path: string) {
     '/attendance/my': { category: 'HRMS', title: 'My History' },
     '/attendance/apply-leave': { category: 'HRMS', title: 'Apply Leave' },
     '/attendance/leaves': { category: 'HRMS', title: 'My Leaves' },
+    '/attendance/reimbursements': { category: 'HRMS', title: 'My Reimbursements' },
+    '/attendance/admin/reimbursements': { category: 'HRMS Management', title: 'Reimbursements' },
 
     '/attendance/admin': { category: 'HRMS Admin', title: 'Team Dashboard' },
     '/attendance/admin/view': { category: 'HRMS Admin', title: 'Team Attendance' },
@@ -333,7 +402,7 @@ function GlobalSearch() {
   };
 
   return (
-    <div ref={wrapRef} className="flex-1 max-w-md relative">
+    <div ref={wrapRef} className="flex-1 min-w-0 max-w-md relative">
       <div className="relative group">
         <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-brand-choco-soft pointer-events-none group-focus-within:text-brand-orange transition" />
         <input ref={inputRef} type="text" value={query}
@@ -413,7 +482,7 @@ function QuickActionsMenu() {
   };
 
   return (
-    <div ref={wrapRef} className="relative">
+    <div ref={wrapRef} className="hidden sm:block relative">
       <button onClick={() => setOpen(!open)}
         className={cn('hidden sm:flex items-center gap-2 h-12 px-4 rounded-2xl font-semibold text-sm transition-all',
           'bg-gradient-to-r from-brand-orange to-brand-orange-light text-white shadow-lg shadow-brand-orange/25 hover:shadow-xl hover:shadow-brand-orange/30')}>
@@ -465,9 +534,9 @@ function UserMenu({ userEmail, userName, userRole, onLogout }: {
   const roleLabel = userRole ? ROLE_LABELS[userRole as keyof typeof ROLE_LABELS] : 'Signed in';
 
   return (
-    <div ref={wrapRef} className="relative">
+    <div ref={wrapRef} className="relative shrink-0">
       <button onClick={() => setOpen(!open)}
-        className="flex items-center gap-2 h-12 pl-1 pr-3 rounded-2xl bg-white border-2 border-brand-choco/8 hover:border-brand-orange/40 transition shadow-sm">
+        className="flex items-center justify-center md:justify-start gap-2 w-12 md:w-auto h-12 px-1 md:pl-1 md:pr-3 rounded-2xl bg-white border-2 border-brand-choco/8 hover:border-brand-orange/40 transition shadow-sm">
         <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-brand-orange-light to-brand-orange flex items-center justify-center text-white font-bold text-sm shadow-md">{initial}</div>
         <div className="hidden md:block text-left">
           <p className="text-sm font-bold leading-tight">{userName}</p>
@@ -539,8 +608,8 @@ function UserMenu({ userEmail, userName, userRole, onLogout }: {
   );
 }
 
-function SidebarContent({ onLogout, userEmail, userName, userRole, onNavigate }: {
-  onLogout: () => void; userEmail: string; userName: string; userRole: string | null; onNavigate?: () => void;
+function SidebarContent({ onNavigate }: {
+  onNavigate?: () => void;
 }) {
   const { can } = usePermission();
   const { userDoc } = useAuth();
@@ -556,15 +625,12 @@ function SidebarContent({ onLogout, userEmail, userName, userRole, onNavigate }:
     if (currentSection) setExpanded((previous) => ({ ...previous, [currentSection]: true }));
   }, [location.pathname, currentSection]);
 
-  const visibleSections = NAV_SECTIONS.map((section) => {
+  const visibleSections = NAV_SECTIONS.filter((section) => section.title === currentSection).map((section) => {
     const items = section.items
       .filter((item) => can(item.viewPerm) || (item.to === '/users' && can('users.create')))
       .map((item) => ({ ...item, children: item.children?.filter((c) => can(c.viewPerm)) ?? [] }));
     return { ...section, items };
   }).filter((s) => s.items.length > 0);
-
-  const initial = (userName?.[0] ?? userEmail?.[0] ?? '?').toUpperCase();
-  const roleLabel = userRole ? ROLE_LABELS[userRole as keyof typeof ROLE_LABELS] : '';
 
   return (
     <>
@@ -612,28 +678,9 @@ function SidebarContent({ onLogout, userEmail, userName, userRole, onNavigate }:
 
       <div className="p-4 mt-4">
         <div className="p-4 rounded-2xl bg-gradient-to-br from-brand-cream-dark to-brand-cream-deep border border-brand-orange/10">
-          <div className="flex items-center gap-3 mb-3">
-            <div className="w-10 h-10 rounded-full bg-white flex items-center justify-center text-brand-orange font-bold">{initial}</div>
-            <div className="min-w-0 flex-1">
-              <p className="text-sm font-bold truncate">{userName}</p>
-              <p className="text-xs text-brand-choco-soft truncate">{userEmail}</p>
-              {roleLabel && (
-                <span className="inline-flex items-center gap-1 mt-1 px-2 py-0.5 rounded-full bg-white text-[9px] font-bold text-brand-choco">
-                  {userRole === 'super_admin' ? <ShieldCheck className="w-2.5 h-2.5" /> : <Shield className="w-2.5 h-2.5" />}
-                  {roleLabel}
-                </span>
-              )}
-            </div>
-          </div>
-          <button onClick={onLogout}
-            className="w-full flex items-center justify-center gap-2 py-2 rounded-xl bg-white hover:bg-brand-orange hover:text-white transition-all text-sm font-semibold">
-            <LogOut className="w-4 h-4" />
-            Sign Out
-          </button>
-        </div>
-        <div className="mt-3 flex items-center justify-center gap-1.5 text-[10px] text-brand-choco-soft">
-          <Sparkles className="w-3 h-3" />
-          v2.0 · STEMmantra
+          <p className="text-xs font-semibold text-brand-orange-dark">Powered by</p>
+          <p className="mt-1 text-lg font-bold text-brand-choco">STEMmantra</p>
+          <p className="mt-2 text-xs text-brand-choco-soft">A step towards innovation</p>
         </div>
       </div>
     </>

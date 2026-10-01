@@ -109,7 +109,7 @@ export function useAllAttendance(limitCount = 500) {
 }
 
 /** Today's attendance for a specific user (one doc, real-time). */
-export function useTodaysAttendance(userId?: string | null) {
+export function useTodaysAttendance(userId?: string | null, date = todayKey()) {
   const [record, setRecord] = useState<AttendanceRecord | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -119,7 +119,7 @@ export function useTodaysAttendance(userId?: string | null) {
       setLoading(false);
       return;
     }
-    const ref = doc(db, COL, dailyId(userId, todayKey()));
+    const ref = doc(db, COL, dailyId(userId, date));
     const unsub = onSnapshot(
       ref,
       (snap) => {
@@ -136,7 +136,7 @@ export function useTodaysAttendance(userId?: string | null) {
       }
     );
     return unsub;
-  }, [userId]);
+  }, [userId, date]);
 
   return { record, loading };
 }

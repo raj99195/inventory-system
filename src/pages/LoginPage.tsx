@@ -206,7 +206,7 @@ export default function LoginPage() {
               className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-white/15 backdrop-blur-md border border-white/25 text-xs font-bold uppercase tracking-widest mb-6"
             >
               <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />
-              Admin Inventory Portal
+              One workspace. Every day.
             </div>
 
             <h1
@@ -215,9 +215,7 @@ export default function LoginPage() {
 
               className="font-display text-5xl xl:text-6xl font-bold leading-[1.05] drop-shadow-lg"
             >
-              Inventory
-              <br />
-              Management
+              S-One
               <br />
               <span
 
@@ -226,7 +224,7 @@ export default function LoginPage() {
                 className="inline-block bg-gradient-to-r from-white via-yellow-100 to-white bg-clip-text text-transparent"
                 style={{ backgroundSize: '200% 100%' }}
               >
-                Made Simple.
+                by STEMmantra
               </span>
             </h1>
 
@@ -236,8 +234,8 @@ export default function LoginPage() {
 
               className="mt-5 text-lg text-white/90 max-w-md leading-relaxed"
             >
-              Track products, stock, assets and Zoho invoices — all in one place
-              with complete audit history.
+              Bring your people and operations together. Manage attendance,
+              leaves, schools, stock and assets in one connected workspace.
             </p>
 
             {/* Feature chips */}
@@ -250,7 +248,7 @@ export default function LoginPage() {
               {[
                 { icon: Zap, text: 'Real-time sync' },
                 { icon: Shield, text: 'Secure & audited' },
-                { icon: Sparkles, text: 'Zoho integration' },
+                { icon: Sparkles, text: 'HRMS + Inventory' },
               ].map((f) => (
                 <div
                   key={f.text}
@@ -350,7 +348,7 @@ export default function LoginPage() {
                   className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-brand-orange-50 text-brand-orange-dark text-xs font-bold uppercase tracking-wider"
                 >
                   <span className="w-1.5 h-1.5 rounded-full bg-brand-orange animate-pulse" />
-                  Admin Portal
+                  S-One · STEMmantra
                 </div>
                 <h2
 
@@ -366,7 +364,7 @@ export default function LoginPage() {
 
                   className="text-brand-choco-soft mt-2"
                 >
-                  Sign in to access the inventory dashboard.
+                  Your team, your work, one place. Sign in to your HRMS and Inventory workspace.
                 </p>
               </div>
 
@@ -387,7 +385,7 @@ export default function LoginPage() {
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
                       className="input-field pl-12"
-                      placeholder="admin@stemmantra.com"
+                      placeholder="you@stemmantra.com"
                     />
                   </div>
                 </div>

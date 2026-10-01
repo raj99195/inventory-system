@@ -33,6 +33,7 @@ import { useCategories } from '@/hooks/useCategories';
 import { usePermission } from '@/hooks/usePermission';
 import type { Product } from '@/types';
 import { cn, formatINR, formatDate } from '@/lib/utils';
+import { rankProducts } from '@/lib/quotationPricing';
 
 type ViewMode = 'grid' | 'list';
 type FilterStatus = 'all' | 'active' | 'inactive' | 'discontinued' | 'low' | 'out';
@@ -80,13 +81,8 @@ export default function ProductsPage() {
   }
 
   const filtered = useMemo(() => {
-    return products.filter((p) => {
-      const q = search.toLowerCase();
-      const matchSearch =
-        !q ||
-        p.name.toLowerCase().includes(q) ||
-        p.sku.toLowerCase().includes(q) ||
-        p.brand?.toLowerCase().includes(q);
+    const matches = search.trim() ? rankProducts(products, search, undefined, true) : products;
+    return matches.filter((p) => {
       const matchCategory = categoryFilter === 'all' || p.category === categoryFilter;
       const matchStatus =
         statusFilter === 'all'
@@ -96,7 +92,7 @@ export default function ProductsPage() {
           : statusFilter === 'out'
           ? p.currentStock === 0
           : p.status === statusFilter;
-      return matchSearch && matchCategory && matchStatus;
+      return matchCategory && matchStatus;
     });
   }, [products, search, statusFilter, categoryFilter]);
 

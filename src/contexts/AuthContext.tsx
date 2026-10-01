@@ -75,7 +75,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           if (current !== generation) return;
           if (snap.exists()) {
             const raw = snap.data();
-            setUserDoc({ ...raw, uid: snap.id, permissions: normalizePermissions(raw.permissions) } as AppUser);
+          setUserDoc({ ...raw, uid: snap.id, permissions: normalizePermissions(raw.permissions, raw.role) } as AppUser);
             setNoAccess(false);
           } else { setUserDoc(null); setNoAccess(true); }
           setLoading(false); setReady(true);

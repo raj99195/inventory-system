@@ -11,6 +11,8 @@ const StockPage = lazy(() => import('./pages/StockPage'));
 const InvoicesPage = lazy(() => import('./pages/InvoicesPage'));
 const EmployeesPage = lazy(() => import('./pages/EmployeesPage'));
 const AssetsPage = lazy(() => import('./pages/AssetsPage'));
+const OfficePage = lazy(() => import('./pages/OfficePage'));
+const ReimbursementsPage = lazy(() => import('./pages/ReimbursementsPage'));
 const AssignmentsPage = lazy(() => import('./pages/AssignmentsPage'));
 const AuditPage = lazy(() => import('./pages/AuditPage'));
 const UsersPage = lazy(() => import('./pages/UsersPage'));
@@ -54,7 +56,7 @@ function DashboardEntry() {
 function InventoryEntry() {
   const { can } = usePermission();
   if (can('dashboard.view')) return <DashboardPage />;
-  const target = [['products.view', '/products'], ['kits.view', '/kits'], ['stock.view', '/stock'], ['assets.view', '/assets'], ['requests.viewOwn', '/requests']].find(([permission]) => can(permission));
+  const target = [['products.view', '/products'], ['kits.view', '/kits'], ['stock.view', '/stock'], ['assets.view', '/assets'], ['officeInventory.view', '/office-inventory'], ['officeAssets.view', '/office-assets'], ['requests.viewOwn', '/requests']].find(([permission]) => can(permission));
   return target ? <Navigate to={target[1]} replace /> : <p>No Inventory access has been assigned to your role.</p>;
 }
 
@@ -83,6 +85,8 @@ export default function App() {
         {/* HR + Assets */}
         <Route path="employees" element={<EmployeesPage />} />
         <Route path="assets" element={<AssetsPage />} />
+        <Route path="office-assets" element={<OfficePage key="officeAssets" kind="officeAssets" />} />
+        <Route path="office-inventory" element={<OfficePage key="officeInventory" kind="officeInventory" />} />
         <Route path="assignments" element={<AssignmentsPage />} />
 
         {/* Admin */}
@@ -96,9 +100,11 @@ export default function App() {
         <Route path="attendance/my" element={<MyAttendancePage />} />
         <Route path="attendance/apply-leave" element={<ApplyLeavePage />} />
         <Route path="attendance/leaves" element={<MyLeavesPage />} />
+        <Route path="attendance/reimbursements" element={<ReimbursementsPage />} />
 
         {/* ─── Attendance (Admin) ─── */}
         <Route path="attendance/admin" element={<AttendanceAdminDashboardPage />} />
+        <Route path="attendance/admin/reimbursements" element={<ReimbursementsPage key="team" team />} />
         <Route path="attendance/admin/view" element={<AttendanceViewPage />} />
         <Route path="attendance/admin/leaves" element={<LeaveApprovalsPage />} />
         <Route path="attendance/admin/schools" element={<SchoolsPage />} />

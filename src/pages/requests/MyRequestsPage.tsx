@@ -122,7 +122,7 @@ export default function MyRequestsPage() {
                         )}
                       </div>
                       <div className="text-xs text-brand-choco-soft mt-1">
-                        <span className="capitalize">{r.itemType}</span>
+                        <span className="capitalize">{r.scope === 'office' ? (r.itemType === 'asset' ? 'Office Asset' : 'Office Inventory') : r.itemType}</span>
                         {r.quantity > 1 && <> · Qty: <b className="text-brand-choco">{r.quantity}</b></>}
                         <> · Applied {fmtDateTime(r.requestedAt)}</>
                       </div>

@@ -17,6 +17,7 @@ import { useLeaveBalance } from '@/hooks/useLeaves';
 import { useAttendanceSettings } from '@/hooks/useAttendanceSettings';
 import { fmtTime, minutesToHours, monthStart, monthEnd } from '@/lib/attendance/datetime';
 import { cn } from '@/lib/utils';
+import AttendanceReminderCard from '@/components/attendance/AttendanceReminderCard';
 
 export default function AttendanceHomePage() {
   const { userDoc } = useAuth();
@@ -106,6 +107,7 @@ export default function AttendanceHomePage() {
       </div>
 
       {/* Today */}
+      <AttendanceReminderCard />
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
         <StatCard
           label="Today Check-in"

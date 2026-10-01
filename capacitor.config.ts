@@ -2,7 +2,7 @@ import type { CapacitorConfig } from '@capacitor/cli';
 
 const config: CapacitorConfig = {
   appId: 'com.stemmantra.app',
-  appName: 'STEMmantra',
+  appName: 'S-One',
   webDir: 'dist',
 
   // In dev, point to your local Vite server. Comment out for release builds.

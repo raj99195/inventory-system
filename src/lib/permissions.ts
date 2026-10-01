@@ -16,6 +16,8 @@ export interface PermissionModule {
 }
 
 export const PERMISSION_MODULES: PermissionModule[] = [
+  { key: 'reimbursements', label: 'Reimbursements', section: 'attendance', actions: [{ key: 'createOwn', label: 'Submit Own' }, { key: 'viewOwn', label: 'View Own' }, { key: 'viewAll', label: 'View Team' }, { key: 'pay', label: 'Mark Paid & Close' }] },
+  ...(['officeInventory', 'officeAssets'] as const).map((key) => ({ key, label: key === 'officeInventory' ? 'Office Inventory' : 'Office Assets', section: 'inventory' as const, actions: ['view', 'create', 'edit', 'delete', 'assign', 'return'].map((action) => ({ key: action, label: action[0].toUpperCase() + action.slice(1) })) })),
   { key: 'dashboard', label: 'Dashboard', section: 'common', actions: [{ key: 'view', label: 'View' }] },
 
   // INVENTORY
@@ -269,17 +271,19 @@ export const ROLE_DESCRIPTIONS: Record<AppRole, string> = {
 
 export function getPresetForRole(role: AppRole): Permissions {
   if (role === 'custom') return EMPTY_PRESET;
-  return ROLE_PRESETS[role];
+  return normalizePermissions(ROLE_PRESETS[role], role);
 }
 
 export function clonePermissions(p: Permissions): Permissions {
   return JSON.parse(JSON.stringify(p)) as Permissions;
 }
 
-export function normalizePermissions(perms: Partial<Permissions> | null | undefined): Permissions {
+export function normalizePermissions(perms: Partial<Permissions> | null | undefined, role?: AppRole): Permissions {
   if (!perms) return clonePermissions(EMPTY_PRESET);
   const base = clonePermissions(EMPTY_PRESET);
-  return { ...base, ...perms } as Permissions;
+  const office = { view: true, create: ['hr', 'admin', 'super_admin'].includes(role ?? ''), edit: ['hr', 'admin', 'super_admin'].includes(role ?? ''), delete: role === 'super_admin', assign: ['hr', 'admin', 'super_admin'].includes(role ?? ''), return: ['hr', 'admin', 'super_admin'].includes(role ?? '') };
+  const reimbursement = { createOwn: role !== 'custom', viewOwn: role !== 'custom', viewAll: ['hr', 'accountant', 'admin', 'super_admin'].includes(role ?? ''), pay: ['hr', 'accountant', 'admin', 'super_admin'].includes(role ?? '') };
+  return { ...base, officeInventory: office, officeAssets: { ...office }, reimbursements: reimbursement, ...perms } as Permissions;
 }
 
 export function detectRole(perms: Permissions): AppRole {

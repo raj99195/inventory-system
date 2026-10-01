@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   Plus, Trash2, Package, FileText, AlertCircle, Loader2,
   Search, Link2, Download, Eye, User, Hash, Calendar,
-  Building2, Mail, Phone, Lock, TrendingUp, EyeOff,
+  Building2, Mail, Phone, Lock, EyeOff,
   FileSpreadsheet, ChevronDown, ChevronUp, X,
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
@@ -14,7 +14,7 @@ import { useProducts } from '@/hooks/useProducts';
 import { createQuotation, updateQuotation, generateQuotationNumber } from '@/hooks/useQuotations';
 import { downloadQuotationPdf, previewQuotationPdf } from '@/lib/quotationPdf';
 import { cn, formatINR } from '@/lib/utils';
-import { rankProducts, priceQuotationItem } from '@/lib/quotationPricing';
+import { rankProducts, priceQuotationItem, applyGlobalMarkup, productQuotationDefaults } from '@/lib/quotationPricing';
 
 const UNIT_OPTIONS = ['pcs','nos','box','set','pair','m','cm','kg','g','litre','ml'];
 
@@ -127,10 +127,7 @@ export default function QuotationForm({ quotation, onClose, initialItems, initia
   // Product suggestions for manual entry
   const suggestions = useMemo(() => {
     if (!newDesc) return [];
-    const q = newDesc.toLowerCase();
-    return products.filter(p =>
-      p.name.toLowerCase().includes(q) || p.sku.toLowerCase().includes(q)
-    ).slice(0,6);
+    return rankProducts(products, newDesc).slice(0,10);
   }, [products, newDesc]);
 
   // Products for picker dropdown in Excel panel
@@ -156,22 +153,21 @@ export default function QuotationForm({ quotation, onClose, initialItems, initia
 
   const internalStats = useMemo(() => {
     const net = totals.subTotal - totals.totalDiscount;
-    const m   = marginPercent || 0;
-    if (m<=0||net<=0) return { net, cost:0, profit:0, pct:0 };
-    const cost   = r2(net/(1+m/100));
+    const cost = r2(items.reduce((sum, item) => sum + item.quantity * (item.baseRate ?? item.rate), 0));
     const profit = r2(net-cost);
-    return { net, cost, profit, pct: r2((profit/net)*100) };
-  }, [totals, marginPercent]);
+    return { net, cost, profit, pct: net > 0 ? r2((profit/net)*100) : 0 };
+  }, [totals, items]);
+  const changeGlobalMargin = (value: number) => {
+    setMarginPercent(Math.max(0, value || 0));
+    setItems(applyGlobalMarkup);
+  };
 
   // ─── Product matching ─────────────────────────────────────────
   const matchProduct = (name: string) => {
     const q = name.toLowerCase().trim();
     const exact   = products.find(p => p.name.toLowerCase().trim()===q);
     if (exact) return { product: exact, type: 'exact' as const };
-    const partial = products.find(p => {
-      const pn = p.name.toLowerCase().trim();
-      return pn.includes(q) || q.includes(pn);
-    });
+    const partial = q ? rankProducts(products, q)[0] : undefined;
     if (partial) return { product: partial, type: 'partial' as const };
     return { product: undefined, type: 'none' as const };
   };
@@ -201,7 +197,7 @@ export default function QuotationForm({ quotation, onClose, initialItems, initia
         const qty  = qtyCol  ? parseFloat(String(row[qtyCol] ??'1'))||1 : 1;
         const rate0 = rateCol ? parseFloat(String(row[rateCol]??'0'))||0 : 0;
         const { product, type } = matchProduct(name);
-        parsed.push({ name, quantity:qty, rate:product?.sellingPrice??rate0, matchedProduct:product, matchType:type, selected:true });
+        parsed.push({ name, quantity:qty, rate:product?.purchasePrice??rate0, matchedProduct:product, matchType:type, selected:true });
       }
 
       if (!parsed.length) { toast.error('No valid rows found'); return; }
@@ -222,7 +218,7 @@ export default function QuotationForm({ quotation, onClose, initialItems, initia
     setExcelRows(p => p.map((r,i) => i===idx ? {...r,...patch} : r));
 
   const assignProduct       = (idx: number, product: Product) => {
-    updateExcelRow(idx, { matchedProduct:product, matchType:'exact', rate:product.sellingPrice });
+    updateExcelRow(idx, { matchedProduct:product, matchType:'exact', rate:product.purchasePrice });
     setPickerIdx(null); setPickerSearch('');
   };
 
@@ -241,7 +237,7 @@ export default function QuotationForm({ quotation, onClose, initialItems, initia
     const newItems: QuotationLineItem[] = sel.map(r => {
       const p=r.matchedProduct, gst=p?.gstPercent??18, rate=r.rate;
       return {
-        description: r.name, hsn: p?.sku||undefined,
+        description: r.name, hsn: p?.hsn || p?.sku || undefined,
         quantity: r.quantity, unit: p?.unit??'pcs', rate,
         discountPercent: 0, gstPercent: gst,
         amount: r2(r.quantity*rate*(1+gst/100)),
@@ -255,8 +251,9 @@ export default function QuotationForm({ quotation, onClose, initialItems, initia
 
   // ─── Manual item add ──────────────────────────────────────────
   const handleSelectProduct = (p: Product) => {
-    setNewDesc(p.name); setNewUnit(p.unit); setNewRate(p.sellingPrice);
-    setNewGst(p.gstPercent); setLinked(p); setShowSug(false);
+    const defaults = productQuotationDefaults(p);
+    setNewDesc(defaults.description); setNewHsn(defaults.hsn); setNewUnit(defaults.unit); setNewRate(defaults.rate);
+    setNewGst(defaults.gstPercent); setLinked(p); setShowSug(false);
   };
 
   const handleAddItem = () => {
@@ -279,6 +276,7 @@ export default function QuotationForm({ quotation, onClose, initialItems, initia
   const handleUpdateItem = (idx: number, patch: Partial<QuotationLineItem>) => {
     setItems(prev => {
       const u=[...prev], m={...u[idx],...patch};
+      if (patch.rate !== undefined) m.baseRate = patch.rate;
       const after = m.quantity*m.rate*(1-(m.discountPercent||0)/100);
       m.amount = r2(after*(1+(m.gstPercent||0)/100));
       u[idx]=m; return u;
@@ -295,6 +293,7 @@ export default function QuotationForm({ quotation, onClose, initialItems, initia
       setErrors(fe); toast.error('Fix errors'); return false;
     }
     if (!items.length) { toast.error('Add at least one item'); return false; }
+    if (items.some((item) => !item.description.trim() || !Number.isFinite(item.quantity) || item.quantity <= 0 || !Number.isFinite(item.rate) || item.rate < 0 || !Number.isFinite(item.marginValue ?? 0) || (item.marginValue ?? 0) < 0 || !Number.isFinite(item.discountPercent) || item.discountPercent < 0 || item.discountPercent > 100 || !Number.isFinite(item.gstPercent) || item.gstPercent < 0 || item.gstPercent > 100)) { toast.error('Enter valid quantities, costs, margins, discounts and GST'); return false; }
     setErrors({}); return true;
   };
 
@@ -513,7 +512,7 @@ export default function QuotationForm({ quotation, onClose, initialItems, initia
                                     <Package className="w-3.5 h-3.5 text-brand-orange shrink-0"/>
                                     <div className="flex-1 min-w-0">
                                       <p className="text-sm font-semibold truncate">{p.name}</p>
-                                      <p className="text-[10px] text-brand-choco-soft">{p.sku} · ₹{p.sellingPrice} · {p.gstPercent}% GST</p>
+                                      <p className="text-[10px] text-brand-choco-soft">{p.sku} · ₹{p.purchasePrice} · {p.gstPercent}% GST</p>
                                     </div>
                                   </button>
                                 ))}
@@ -575,7 +574,7 @@ export default function QuotationForm({ quotation, onClose, initialItems, initia
                         <Package className="w-4 h-4 text-brand-orange shrink-0"/>
                         <div className="min-w-0 flex-1">
                           <p className="text-sm font-semibold truncate">{p.name}</p>
-                          <p className="text-[10px] text-brand-choco-soft">{p.sku} · ₹{p.sellingPrice} · {p.gstPercent}% GST</p>
+                          <p className="text-[10px] text-brand-choco-soft">{p.sku} · ₹{p.purchasePrice} · {p.gstPercent}% GST</p>
                         </div>
                       </button>
                     ))}
@@ -595,6 +594,7 @@ export default function QuotationForm({ quotation, onClose, initialItems, initia
               <label className="block text-[10px] font-bold uppercase tracking-wider text-brand-choco-soft mb-1">Unit</label>
               <select value={newUnit} onChange={e=>setNewUnit(e.target.value)} className="input-field">
                 {UNIT_OPTIONS.map(u=><option key={u} value={u}>{u}</option>)}
+                {!UNIT_OPTIONS.includes(newUnit) && <option value={newUnit}>{newUnit}</option>}
               </select>
             </div>
             <div className="col-span-12 md:col-span-1 flex items-end">
@@ -603,7 +603,7 @@ export default function QuotationForm({ quotation, onClose, initialItems, initia
           </div>
           <div className="grid grid-cols-12 gap-2">
             <div className="col-span-4 md:col-span-3">
-              <label className="block text-[10px] font-bold uppercase tracking-wider text-brand-choco-soft mb-1">Base Rate (₹)</label>
+              <label className="block text-[10px] font-bold uppercase tracking-wider text-brand-choco-soft mb-1">Purchase Cost / Unit (₹)</label>
               <input type="number" value={newRate} onChange={e=>setNewRate(Number(e.target.value))} min={0} step={0.01} className="input-field"/>
             </div>
             <div className="col-span-4 md:col-span-2">
@@ -626,6 +626,11 @@ export default function QuotationForm({ quotation, onClose, initialItems, initia
           )}
         </div>
 
+        <div className="rounded-2xl border border-purple-200 bg-purple-50/50 p-4 flex flex-wrap items-center gap-4">
+          <label className="text-sm font-bold text-purple-900">Global margin %<input aria-label="Global margin percentage" type="number" min="0" step="0.01" value={marginPercent} onChange={(e) => changeGlobalMargin(Number(e.target.value))} className="input-field mt-2 !w-28" /></label>
+          <div className="flex-1 min-w-[180px]"><p className="text-sm font-semibold text-purple-900">Apply to all items on purchase cost</p><p className="mt-1 text-xs text-purple-800">Then adjust any item individually in % or ₹ per unit. Applying globally resets individual margins.</p></div>
+          <button type="button" onClick={() => changeGlobalMargin(marginPercent)} className="btn-secondary">Apply to all</button>
+        </div>
         {/* Items list */}
         {items.length===0 ? (
           <div className="rounded-2xl border-2 border-dashed border-brand-choco/15 p-8 text-center">
@@ -640,7 +645,7 @@ export default function QuotationForm({ quotation, onClose, initialItems, initia
             <div className="max-h-96 overflow-y-auto">
               <AnimatePresence initial={false}>
                 {items.map((it,idx)=>(
-                  <ItemRow key={idx} item={{...it, amount: pricedItems[idx].amount}} index={idx} isFirst={idx===0}
+                  <ItemRow key={idx} item={{...it, amount: pricedItems[idx].amount}} globalMargin={marginPercent} quoteRate={pricedItems[idx].rate} index={idx} isFirst={idx===0}
                     onUpdate={p=>handleUpdateItem(idx,p)} onRemove={()=>handleRemoveItem(idx)}/>
                 ))}
               </AnimatePresence>
@@ -648,7 +653,7 @@ export default function QuotationForm({ quotation, onClose, initialItems, initia
           </div>
         )}
 
-        {items.length > 0 && <p className="text-xs text-brand-choco-soft">Editable rates are base rates. {marginPercent}% markup is included in line totals, quotation totals and customer PDF prices.</p>}
+        {items.length > 0 && <p className="text-xs text-brand-choco-soft">Quoted rate = purchase cost + item margin, followed by discount and GST. Only quoted prices appear in the customer PDF.</p>}
         {/* Totals */}
         {items.length>0 && (
           <div className="flex flex-col items-end gap-1.5 py-4 border-t border-brand-choco/8 text-sm">
@@ -677,7 +682,7 @@ export default function QuotationForm({ quotation, onClose, initialItems, initia
                       <EyeOff className="w-2.5 h-2.5"/>Not on PDF
                     </span>
                   </div>
-                  <p className="text-xs text-purple-800/80">Markup increases item prices before discount and GST.</p>
+                  <p className="text-xs text-purple-800/80">Purchase cost, profit and private notes.</p>
                 </div>
               </div>
               {showInternalPanel ? <ChevronUp className="w-4 h-4 text-purple-700"/> : <ChevronDown className="w-4 h-4 text-purple-700"/>}
@@ -690,14 +695,8 @@ export default function QuotationForm({ quotation, onClose, initialItems, initia
                   <div className="p-4 space-y-4">
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <div>
-                        <label className="block text-xs font-bold uppercase tracking-wider text-purple-800 mb-1.5">Margin % (Markup on Cost)</label>
-                        <div className="relative max-w-44">
-                          <TrendingUp className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-purple-700"/>
-                          <input type="number" value={marginPercent} onChange={e=>setMarginPercent(Math.max(0,Number(e.target.value)||0))}
-                            min={0} max={1000} step={0.01} placeholder="e.g. 30"
-                            className="w-full pl-9 pr-8 py-2 rounded-xl bg-white border-2 border-purple-300 focus:border-purple-600 outline-none font-bold text-purple-900"/>
-                          <span className="absolute right-3 top-1/2 -translate-y-1/2 text-purple-700 font-bold text-sm">%</span>
-                        </div>
+                        <label className="block text-xs font-bold uppercase tracking-wider text-purple-800 mb-1.5">Global margin</label>
+                        <p className="text-sm text-purple-900">{marginPercent}% on purchase cost. Individual changes are shown beside each item.</p>
                       </div>
                       <div>
                         <label className="block text-xs font-bold uppercase tracking-wider text-purple-800 mb-1.5">Internal Notes</label>
@@ -706,10 +705,10 @@ export default function QuotationForm({ quotation, onClose, initialItems, initia
                           className="w-full px-3 py-2 rounded-xl bg-white border-2 border-purple-300 focus:border-purple-600 outline-none text-sm"/>
                       </div>
                     </div>
-                    {marginPercent>0&&internalStats.net>0 ? (
+                    {internalStats.net>0 ? (
                       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                         <Stat label="Selling (Net)" value={formatINR(internalStats.net)}    hint="After discount, before GST"/>
-                        <Stat label="Est. Cost"     value={formatINR(internalStats.cost)}   hint="Back-calculated"/>
+                        <Stat label="Purchase Cost" value={formatINR(internalStats.cost)} hint="Sum of item costs × quantities"/>
                         <Stat label="Est. Profit"   value={formatINR(internalStats.profit)} hint="Selling − Cost" hi/>
                         <Stat label="Profit Margin" value={`${internalStats.pct}%`}         hint="Profit / Selling"/>
                       </div>
@@ -755,8 +754,9 @@ export default function QuotationForm({ quotation, onClose, initialItems, initia
 }
 
 // ─── Item Row ─────────────────────────────────────────────────
-function ItemRow({ item, index, isFirst, onUpdate, onRemove }: {
+function ItemRow({ item, index, isFirst, globalMargin, quoteRate, onUpdate, onRemove }: {
   item:QuotationLineItem; index:number; isFirst:boolean;
+  globalMargin:number; quoteRate:number;
   onUpdate:(p:Partial<QuotationLineItem>)=>void; onRemove:()=>void;
 }) {
   return (
@@ -780,7 +780,7 @@ function ItemRow({ item, index, isFirst, onUpdate, onRemove }: {
         <span className="text-[10px] font-semibold text-brand-choco-soft w-8 shrink-0">{item.unit}</span>
         <div className="flex items-center gap-1 shrink-0">
           <span className="text-xs text-brand-choco-soft">₹</span>
-          <input aria-label="Base rate before markup" title="Base rate before markup" type="number" value={item.rate} onChange={e=>onUpdate({rate:Number(e.target.value)})} min={0} step={0.01}
+          <input aria-label="Purchase cost per unit" title="Purchase cost per unit" type="number" value={item.rate} onChange={e=>onUpdate({rate:Number(e.target.value)})} min={0} step={0.01}
             className="h-9 w-20 px-2 rounded-lg bg-white border-2 border-brand-choco/8 focus:border-brand-orange outline-none text-sm font-bold text-center"/>
         </div>
         <div className="flex items-center gap-0.5 shrink-0" title="Disc%">
@@ -800,6 +800,18 @@ function ItemRow({ item, index, isFirst, onUpdate, onRemove }: {
         <button type="button" onClick={onRemove} className="w-9 h-9 rounded-lg text-red-500 hover:bg-red-50 flex items-center justify-center transition shrink-0">
           <Trash2 className="w-4 h-4"/>
         </button>
+      </div>
+      <div className="mt-3 flex flex-wrap items-center gap-3 text-xs">
+        <span className="font-semibold text-purple-900">Margin</span>
+        <select aria-label={`Margin type for item ${index+1}`} value={item.marginMode ?? 'percent'} className="h-9 rounded-lg border border-purple-200 bg-purple-50 px-2" onChange={(e) => {
+          const mode = e.target.value as 'percent' | 'inr';
+          const current = item.marginValue ?? globalMargin;
+          const value = mode === 'inr' ? r2(item.rate * current / 100) : item.rate > 0 ? r2(current / item.rate * 100) : 0;
+          onUpdate({ marginMode: mode, marginValue: value });
+        }}><option value="percent">%</option><option value="inr">₹ / unit</option></select>
+        <input aria-label={`Margin value for item ${index+1}`} type="number" min="0" step="0.01" value={item.marginValue ?? globalMargin} onChange={(e) => onUpdate({ marginMode: item.marginMode ?? 'percent', marginValue: Math.max(0, Number(e.target.value) || 0) })} className="h-9 w-24 rounded-lg border border-purple-200 bg-white px-2" />
+        <span className="text-brand-choco-soft">{item.marginValue === undefined ? 'Global' : 'Individual'}</span>
+        <span className="font-semibold">Purchase: {formatINR(item.rate)} → Quoted rate: {formatINR(quoteRate)} / {item.unit}</span>
       </div>
     </motion.div>
   );

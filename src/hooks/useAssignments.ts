@@ -88,6 +88,9 @@ export async function assignAsset(params: AssignParams): Promise<void> {
   if (!user) throw new Error('Not authenticated');
 
   const { asset, employee, conditionAtAssign, accessories, remarks } = params;
+  if (employee.id === user.uid || employee.email.toLowerCase() === user.email?.toLowerCase()) {
+    throw new Error('You cannot assign an asset to yourself');
+  }
 
   if (asset.status !== 'available') {
     throw new Error(`Asset is ${asset.status} — cannot assign`);
@@ -229,6 +232,9 @@ export async function transferAsset(params: TransferParams): Promise<void> {
   if (!user) throw new Error('Not authenticated');
 
   const { asset, fromEmployee, toEmployee, remarks } = params;
+  if (toEmployee.id === user.uid || toEmployee.email.toLowerCase() === user.email?.toLowerCase()) {
+    throw new Error('You cannot transfer an asset to yourself');
+  }
 
   if (asset.status !== 'assigned') {
     throw new Error('Asset must be assigned before transfer');

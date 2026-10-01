@@ -5,6 +5,10 @@ import path from 'path';
 
 export default defineConfig({
   plugins: [react(), tailwindcss()],
+  // Keep generated files separate from the /assets application route.
+  build: {
+    assetsDir: 'static',
+  },
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),

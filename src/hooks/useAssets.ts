@@ -17,33 +17,34 @@ import { logAudit } from '@/lib/audit';
 
 const COL = 'assets';
 
-export function useAssets(enabled = true) {
+export function useAssets(enabled = true, source: 'assets' | 'officeAssets' = COL) {
   const [assets, setAssets] = useState<Asset[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     if (!enabled) { setAssets([]); setLoading(false); return; }
     setLoading(true);
-    const q = query(collection(db, COL), orderBy('createdAt', 'desc'));
+    const q = query(collection(db, source), orderBy('createdAt', 'desc'));
     const unsub = onSnapshot(q, (snap) => {
       setAssets(snap.docs.map((d) => ({ id: d.id, ...d.data() } as Asset)));
       setLoading(false);
     });
     return unsub;
-  }, [enabled]);
+  }, [enabled, source]);
 
   return { assets, loading };
 }
 
-export async function generateAssetIdStr(): Promise<string> {
-  const snap = await getDocs(collection(db, COL));
-  return `AST-${String(snap.size + 1).padStart(5, '0')}`;
+export async function generateAssetIdStr(source: 'assets' | 'officeAssets' = COL): Promise<string> {
+  const snap = await getDocs(collection(db, source));
+  return `${source === COL ? 'AST' : 'OAST'}-${String(snap.size + 1).padStart(5, '0')}`;
 }
 
 export async function createAsset(
-  data: Omit<Asset, 'id' | 'createdAt' | 'updatedAt'>
+  data: Omit<Asset, 'id' | 'createdAt' | 'updatedAt'>,
+  source: 'assets' | 'officeAssets' = COL
 ): Promise<string> {
-  const ref = await addDoc(collection(db, COL), {
+  const ref = await addDoc(collection(db, source), {
     ...data,
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
@@ -61,9 +62,10 @@ export async function createAsset(
 export async function updateAsset(
   id: string,
   data: Partial<Asset>,
-  previousValue?: Partial<Asset>
+  previousValue?: Partial<Asset>,
+  source: 'assets' | 'officeAssets' = COL
 ): Promise<void> {
-  await updateDoc(doc(db, COL, id), {
+  await updateDoc(doc(db, source, id), {
     ...data,
     updatedAt: serverTimestamp(),
   });

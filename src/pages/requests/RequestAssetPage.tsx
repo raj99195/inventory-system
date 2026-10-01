@@ -32,8 +32,8 @@ interface SelectedItem {
 export default function RequestAssetPage() {
   const { userDoc } = useAuth();
   const { can } = usePermission();
-  const { assets, loading: loadingA } = useAssets();
-  const { products, loading: loadingP, error: productsError } = useProducts();
+  const { assets, loading: loadingA } = useAssets(true, 'officeAssets');
+  const { products, loading: loadingP, error: productsError } = useProducts(true, 'officeInventory');
 
   const [tab, setTab] = useState<Tab>('assets');
   const [search, setSearch] = useState('');
@@ -91,14 +91,14 @@ export default function RequestAssetPage() {
         </div>
         <h1 className="font-display text-4xl lg:text-5xl font-bold">Request an Item</h1>
         <p className="text-brand-choco-soft mt-2">
-          Browse available assets or products. Submit a request — admin approves and it's auto-assigned to you.
+          Request office items. HR or an authorized approver reviews and assigns your item.
         </p>
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-1 border-b border-brand-choco/10">
-        <TabButton active={tab === 'assets'} onClick={() => setTab('assets')} icon={Laptop} label="Assets" count={availableAssets.length} />
-        {/* Product requests are temporarily hidden. */}
+      <div className="flex gap-1 border-b border-brand-choco/10 overflow-x-auto">
+        <TabButton active={tab === 'assets'} onClick={() => setTab('assets')} icon={Laptop} label="Office Assets" count={availableAssets.length} />
+        <TabButton active={tab === 'products'} onClick={() => setTab('products')} icon={Package} label="Office Inventory" count={activeProducts.length} />
       </div>
 
       {/* Search */}
@@ -116,7 +116,7 @@ export default function RequestAssetPage() {
       </div>
 
       {tab === 'products' && !loadingP && !productsError && (
-        <p className="text-sm text-brand-choco-soft">{activeProducts.length} products in catalog � {activeProducts.filter((p) => p.currentStock > 0).length} in stock. Out-of-stock products become requestable once stock is added.</p>
+        <p className="text-sm text-brand-choco-soft">{activeProducts.length} products in catalog · {activeProducts.filter((p) => p.currentStock > 0).length} in stock. Out-of-stock products become requestable once stock is added.</p>
       )}
       {/* Content */}
       {tab === 'products' && productsError ? (
@@ -191,7 +191,7 @@ function TabButton({
     <button
       onClick={onClick}
       className={cn(
-        'px-4 py-2.5 text-sm font-bold border-b-2 -mb-px transition flex items-center gap-2',
+        'px-4 py-2.5 text-sm font-bold border-b-2 -mb-px transition flex items-center gap-2 shrink-0 whitespace-nowrap',
         active ? 'border-brand-orange text-brand-orange-dark' : 'border-transparent text-brand-choco-soft hover:text-brand-choco'
       )}
     >
@@ -296,6 +296,7 @@ function RequestModal({
     setBusy(true);
     try {
       await createRequest({
+        scope: 'office',
         userId: userDoc.uid,
         userName: userDoc.name,
         userEmail: userDoc.email,

@@ -18,6 +18,7 @@ import { fmtTime, minutesToHours, todayKey } from '@/lib/attendance/datetime';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/contexts/AuthContext';
 import { canActOnUser } from '@/lib/permissions';
+import AttendanceReminderCard from '@/components/attendance/AttendanceReminderCard';
 
 export default function AttendanceAdminDashboardPage() {
   const { can } = usePermission();
@@ -67,6 +68,7 @@ export default function AttendanceAdminDashboardPage() {
         </p>
       </div>
 
+      <AttendanceReminderCard />
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <Stat label="Checked-in Today" value={stats.checkedIn} total={active.length} icon={CheckCircle2} tone="pastel-green" />
         <Stat label="Checked-out" value={stats.checkedOut} total={active.length} icon={LogOut} tone="pastel-blue" />

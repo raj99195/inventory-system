@@ -9,7 +9,7 @@ interface ModalProps {
   title?: string;
   description?: string;
   children: ReactNode;
-  size?: 'sm' | 'md' | 'lg' | 'xl';
+  size?: 'sm' | 'md' | 'lg' | 'xl' | 'preview';
   closeOnOverlay?: boolean;
 }
 
@@ -18,6 +18,7 @@ const sizes = {
   md: 'max-w-xl',
   lg: 'max-w-3xl',
   xl: 'max-w-5xl',
+  preview: 'max-w-[96vw] h-[94dvh] !max-h-[94dvh]',
 };
 
 export default function Modal({

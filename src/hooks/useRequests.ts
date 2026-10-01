@@ -23,6 +23,7 @@ import type {
 } from '@/types';
 import { logAudit } from '@/lib/audit';
 import { canActOnUser, hasPermission } from '@/lib/permissions';
+import { fulfillOffice } from '@/lib/office';
 
 const COL = 'requests';
 async function assertRequestReview(tx: Transaction, userId: string): Promise<void> {
@@ -138,6 +139,7 @@ export function usePendingRequests(limitCount = 200) {
 // ─── Actions ───────────────────────────────────────────────────
 
 export interface CreateRequestParams {
+  scope?: 'office';
   userId: string;
   userName: string;
   userEmail: string;
@@ -165,9 +167,10 @@ export async function createRequest(params: CreateRequestParams): Promise<string
     quantity, reason, urgency = 'normal',
   } = params;
 
+  if (userId !== authUser.uid) throw new Error('You can only request for yourself');
   if (!itemId) throw new Error('Please select an item');
   if (!reason.trim()) throw new Error('Please provide a reason');
-  if (quantity < 1) throw new Error('Quantity must be at least 1');
+  if (!Number.isSafeInteger(quantity) || quantity < 1) throw new Error('Quantity must be a positive whole number');
   if (itemType === 'asset' && quantity !== 1) {
     throw new Error('Asset requests always have quantity 1');
   }
@@ -178,11 +181,12 @@ export async function createRequest(params: CreateRequestParams): Promise<string
     userId,
     userName,
     userEmail,
-    userDepartment,
+    userDepartment: userDepartment ?? '',
+    ...(params.scope ? { scope: params.scope } : {}),
     itemType,
     itemId,
     itemName,
-    itemSku,
+    itemSku: itemSku ?? '',
     quantity,
     reason: reason.trim(),
     urgency,
@@ -239,6 +243,12 @@ export async function approveRequest(
     }
 
     const nowIso = new Date().toISOString();
+    if (req.scope === 'office') {
+      if (!['asset', 'product'].includes(req.itemType)) throw new Error('Invalid office item');
+      const assignmentId = await fulfillOffice(tx, req.itemType === 'asset' ? 'officeAssets' : 'officeInventory', req.itemId, req.userId, req.quantity, req.reason, requestId);
+      tx.update(requestRef, { status: 'fulfilled', reviewedBy: reviewerId, reviewerName, reviewedAt: nowIso, reviewNotes, fulfilledAt: nowIso, assignmentId });
+      return;
+    }
 
     if (req.itemType === 'asset') {
       // ─── Asset flow ───

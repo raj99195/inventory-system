@@ -49,6 +49,7 @@ const assetSchema = z.object({
 type FormData = z.infer<typeof assetSchema>;
 
 interface Props {
+  source?: 'assets' | 'officeAssets';
   asset?: Asset | null;
   onClose: () => void;
   onSaved?: () => void;
@@ -70,7 +71,7 @@ const ASSET_CATEGORIES = [
   'Other',
 ];
 
-export default function AssetForm({ asset, onClose, onSaved }: Props) {
+export default function AssetForm({ asset, onClose, onSaved, source = 'assets' }: Props) {
   const isEdit = !!asset;
   const [saving, setSaving] = useState(false);
   const [errors, setErrors] = useState<Partial<Record<keyof FormData, string>>>(
@@ -95,10 +96,10 @@ export default function AssetForm({ asset, onClose, onSaved }: Props) {
 
   useEffect(() => {
     if (isEdit || form.assetId) return;
-    generateAssetIdStr().then((id) =>
+    generateAssetIdStr(source).then((id) =>
       setForm((f) => ({ ...f, assetId: id }))
     );
-  }, [isEdit, form.assetId]);
+  }, [isEdit, form.assetId, source]);
 
   const set = <K extends keyof FormData>(key: K, val: FormData[K]) => {
     setForm((f) => ({ ...f, [key]: val }));
@@ -126,10 +127,10 @@ export default function AssetForm({ asset, onClose, onSaved }: Props) {
           name: asset.name,
           status: asset.status,
           condition: asset.condition,
-        });
+        }, source);
         toast.success('Asset updated');
       } else {
-        await createAsset(parsed.data);
+        await createAsset(parsed.data, source);
         toast.success('Asset registered');
       }
       onSaved?.();
@@ -294,7 +295,7 @@ export default function AssetForm({ asset, onClose, onSaved }: Props) {
             <div className="grid grid-cols-4 gap-2">
               {(
                 ['available', 'assigned', 'under-repair', 'damaged', 'lost', 'retired', 'disposed'] as AssetStatus[]
-              ).map((s) => (
+                ).filter((s) => source !== 'officeAssets' || s !== 'assigned').map((s) => (
                 <button
                   key={s}
                   type="button"

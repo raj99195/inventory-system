@@ -11,6 +11,9 @@ export type AppRole =
   | 'custom';
 
 export interface Permissions {
+  reimbursements?: { createOwn: boolean; viewOwn: boolean; viewAll: boolean; pay: boolean };
+  officeInventory?: { view: boolean; create: boolean; edit: boolean; delete: boolean; assign: boolean; return: boolean };
+  officeAssets?: { view: boolean; create: boolean; edit: boolean; delete: boolean; assign: boolean; return: boolean };
   dashboard: { view: boolean };
 
   // ---------- Inventory modules ----------
@@ -127,6 +130,7 @@ export interface AppUser {
 export type ProductStatus = 'active' | 'inactive' | 'discontinued';
 
 export interface Product {
+  hsn?: string;
   id: string;
   name: string;
   sku: string;
@@ -264,6 +268,8 @@ export type QuotationStatus =
   | 'converted';
 
 export interface QuotationLineItem {
+  marginMode?: 'percent' | 'inr';
+  marginValue?: number;
   /** Original rate before quotation markup; not printed on customer PDFs. */
   baseRate?: number;
   description: string;
@@ -555,6 +561,7 @@ export type RequestUrgency = 'normal' | 'urgent';
  * and marks the request as 'fulfilled'.
  */
 export interface AssetRequest {
+  scope?: 'office';
   id: string;
 
   // Requester

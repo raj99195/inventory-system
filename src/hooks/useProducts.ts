@@ -17,7 +17,7 @@ import { logAudit } from '@/lib/audit';
 
 const COL = 'products';
 
-export function useProducts(enabled = true) {
+export function useProducts(enabled = true, source: 'products' | 'officeInventory' = COL) {
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
@@ -25,7 +25,8 @@ export function useProducts(enabled = true) {
   useEffect(() => {
     if (!enabled) { setProducts([]); setLoading(false); return; }
     setLoading(true);
-    const q = query(collection(db, COL), orderBy('createdAt', 'desc'));
+    setError(null);
+    const q = query(collection(db, source), orderBy('createdAt', 'desc'));
     const unsub = onSnapshot(
       q,
       (snap) => {
@@ -41,7 +42,7 @@ export function useProducts(enabled = true) {
       }
     );
     return unsub;
-  }, [enabled]);
+  }, [enabled, source]);
 
   return { products, loading, error };
 }

@@ -255,7 +255,7 @@ function DecideModal({
           <div className="font-bold text-brand-choco">{r.itemName}</div>
           {r.itemSku && <div className="text-xs text-brand-orange font-semibold">{r.itemSku}</div>}
           <div className="text-xs text-brand-choco-soft capitalize">
-            {r.itemType}
+            {r.scope === 'office' ? (r.itemType === 'asset' ? 'Office Asset' : 'Office Inventory') : r.itemType}
             {r.quantity > 1 && ` · Qty: ${r.quantity}`}
           </div>
           <div className="mt-2 text-xs text-brand-choco-soft">Reason: {r.reason || '—'}</div>

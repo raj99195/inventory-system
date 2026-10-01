@@ -23,7 +23,6 @@ import toast from 'react-hot-toast';
 import { z } from 'zod';
 import type { AppRole, AppUser, Permissions } from '@/types';
 import {
-  PERMISSION_MODULES,
   ROLE_LABELS,
   ROLE_DESCRIPTIONS,
   getPresetForRole,
@@ -31,6 +30,7 @@ import {
   getAssignableRoles,
   myLevel,
   canActOnUser,
+  normalizePermissions,
 } from '@/lib/permissions';
 import { createUser, updateUser } from '@/hooks/useUsers';
 import { useSchools } from '@/hooks/useSchools';
@@ -40,6 +40,7 @@ import { usePermission } from '@/hooks/usePermission';
 import { forwardGeocode } from '@/lib/attendance/geocode';
 import { todayKey } from '@/lib/attendance/datetime';
 import { cn } from '@/lib/utils';
+import PermissionMatrix from './PermissionMatrix';
 
 const baseSchema = z.object({
   name: z.string().min(2, 'Name must be at least 2 characters'),
@@ -80,7 +81,7 @@ export default function UserForm({ user, onClose }: Props) {
     user?.role ?? (availableRoles.includes('employee') ? 'employee' : availableRoles[0] ?? 'employee')
   );
   const [permissions, setPermissions] = useState<Permissions>(
-    user?.permissions ?? getPresetForRole(role)
+    user ? normalizePermissions(user.permissions, user.role) : getPresetForRole(role)
   );
 
   // Attendance fields
@@ -110,24 +111,14 @@ export default function UserForm({ user, onClose }: Props) {
 
   const canEditMatrix = isSuperAdmin;
 
-  const togglePermission = (moduleKey: string, actionKey: string) => {
+  const setModulePermissions = (moduleKey: keyof Permissions, actionKeys: string[], value: boolean) => {
     if (!canEditMatrix) return;
-    const cloned = clonePermissions(permissions);
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const module = (cloned as any)[moduleKey];
-    if (!module) return;
-    module[actionKey] = !module[actionKey];
-    setPermissions(cloned);
-  };
-
-  const handleToggleAll = (moduleKey: string, value: boolean) => {
-    if (!canEditMatrix) return;
-    const cloned = clonePermissions(permissions);
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const module = (cloned as any)[moduleKey];
-    if (!module) return;
-    Object.keys(module).forEach((k) => (module[k] = value));
-    setPermissions(cloned);
+    setPermissions((previous) => {
+      const cloned = clonePermissions(previous);
+      const module = { ...(cloned[moduleKey] as Record<string, boolean> | undefined) };
+      actionKeys.forEach((key) => { module[key] = value; });
+      return { ...cloned, [moduleKey]: module };
+    });
   };
 
   const fetchCoords = async () => {
@@ -539,91 +530,9 @@ export default function UserForm({ user, onClose }: Props) {
           <SectionHeader
             icon={Sparkles}
             title="Permissions Matrix"
-            subtitle="Toggle individual permissions. The selected role stays unchanged."
+            subtitle="Choose a category, expand a group and set access. The selected role stays unchanged."
           />
-          <div className="rounded-2xl border border-brand-choco/8 overflow-hidden bg-white">
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead>
-                  <tr className="bg-brand-cream-dark border-b border-brand-choco/8 text-xs font-bold uppercase tracking-wider text-brand-choco-soft">
-                    <th className="text-left p-3">Module</th>
-                    <th className="text-center p-3 w-16">All</th>
-                    <th className="text-left p-3">Permissions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {PERMISSION_MODULES.map((mod) => {
-                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                    const modulePerms = (permissions as any)[mod.key];
-                    const allTrue = mod.actions.every((a) => modulePerms?.[a.key] === true);
-                    const someTrue = mod.actions.some((a) => modulePerms?.[a.key] === true);
-
-                    return (
-                      <tr
-                        key={mod.key}
-                        className="border-b border-brand-choco/5 hover:bg-brand-cream-dark/30 transition"
-                      >
-                        <td className="p-3 font-bold text-sm">
-                          {mod.label}
-                          {mod.section === 'attendance' && (
-                            <span className="ml-2 text-[9px] font-bold uppercase text-brand-orange">
-                              Attendance
-                            </span>
-                          )}
-                        </td>
-                        <td className="p-3 text-center">
-                          <button
-                            type="button"
-                            onClick={() => handleToggleAll(mod.key, !allTrue)}
-                            className={cn(
-                              'w-6 h-6 rounded-md border-2 flex items-center justify-center transition-all',
-                              allTrue
-                                ? 'bg-brand-orange border-brand-orange text-white'
-                                : someTrue
-                                ? 'bg-brand-orange/30 border-brand-orange text-brand-orange'
-                                : 'bg-white border-brand-choco/20 hover:border-brand-orange'
-                            )}
-                          >
-                            {allTrue && <Check className="w-3.5 h-3.5" />}
-                            {!allTrue && someTrue && (
-                              <div className="w-2.5 h-0.5 bg-brand-orange rounded-full" />
-                            )}
-                          </button>
-                        </td>
-                        <td className="p-3">
-                          <div className="flex flex-wrap gap-2">
-                            {mod.actions.map((action) => {
-                              const enabled = modulePerms?.[action.key] === true;
-                              return (
-                                <button
-                                  key={action.key}
-                                  type="button"
-                                  onClick={() => togglePermission(mod.key, action.key)}
-                                  className={cn(
-                                    'inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all border',
-                                    enabled
-                                      ? 'bg-brand-orange text-white border-brand-orange shadow-sm'
-                                      : 'bg-white text-brand-choco-soft border-brand-choco/15 hover:border-brand-orange/40'
-                                  )}
-                                >
-                                  {enabled ? (
-                                    <Check className="w-3 h-3" />
-                                  ) : (
-                                    <span className="w-3 h-3" />
-                                  )}
-                                  {action.label}
-                                </button>
-                              );
-                            })}
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          </div>
+          <PermissionMatrix permissions={permissions} onToggle={setModulePermissions} />
         </section>
       )}
 

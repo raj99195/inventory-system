@@ -8,6 +8,7 @@ import {
   Building2,
   School as SchoolIcon,
   Home,
+  MapPin,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { SelfieCapture } from '@/components/attendance/SelfieCapture';
@@ -123,7 +124,7 @@ export default function MarkAttendancePage() {
   // ─── DONE STATE ──────────────────────────────────────
   if (mode === 'done' && today) {
     const LocIcon =
-      today.locationType === 'school' ? SchoolIcon : today.locationType === 'wfh' ? Home : Building2;
+      today.locationType === 'school' ? SchoolIcon : today.locationType === 'wfh' ? Home : today.locationType === 'other' ? MapPin : Building2;
     return (
       <div className="max-w-2xl mx-auto">
         <div className="card !p-6 sm:!p-8 text-center">
@@ -165,7 +166,7 @@ export default function MarkAttendancePage() {
                   ? `School — ${today.schoolName}`
                   : today.locationType === 'office'
                   ? 'Office'
-                  : 'Work From Home'}
+                  : today.locationType === 'other' ? 'Other' : 'Work From Home'}
               </b>
             </div>
           )}

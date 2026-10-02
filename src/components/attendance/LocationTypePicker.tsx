@@ -3,6 +3,7 @@ import {
   School as SchoolIcon,
   Building2,
   Home,
+  MapPin,
   Loader2,
   Clock,
   CheckCircle2,
@@ -50,6 +51,7 @@ const OPTIONS: OptionMeta[] = [
     icon: Home,
     desc: 'From home',
   },
+  { key: 'other', label: 'Other', icon: MapPin, desc: 'From another location' },
 ];
 
 export function LocationTypePicker({
@@ -97,7 +99,7 @@ export function LocationTypePicker({
       <div className="text-xs font-bold uppercase tracking-wider text-brand-choco-soft">
         Where are you working from?
       </div>
-      <div className="grid grid-cols-3 gap-2 mt-2">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-2">
         {OPTIONS.map((o) => {
           const disabled = o.key === 'school' && !mySchools.length;
           const active = value === o.key;

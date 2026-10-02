@@ -29,7 +29,8 @@ out/
 # Android / Capacitor
 # ================================
 android/
-Scrip
+Scripts/
+scripts/
 # ================================
 # Android / Capacitor
 # ================================
@@ -98,3 +99,13 @@ ui-debug.log
 *.tmp
 *.temp
 *.bak
+
+# ================================
+# Local scripts / Firebase config files to keep out of Git
+# ================================
+build-apk.bat
+firebase.json
+firestore.indexes.json
+generate-icons.bat
+serviceAccount.json
+setup-capacitor.bat

@@ -160,7 +160,8 @@ export default function AttendanceViewPage() {
                           'text-[10px] font-bold uppercase px-2 py-0.5 rounded-full',
                           r.locationType === 'school' && 'bg-pastel-blue text-blue-800',
                           r.locationType === 'office' && 'bg-pastel-green text-green-800',
-                          r.locationType === 'wfh' && 'bg-pastel-pink text-pink-800'
+                          r.locationType === 'other' && 'bg-brand-cream-dark text-brand-choco',
+                        r.locationType === 'wfh' && 'bg-pastel-pink text-pink-800'
                         )}
                       >
                         {r.locationType === 'school' ? r.schoolName ?? 'School' : r.locationType}

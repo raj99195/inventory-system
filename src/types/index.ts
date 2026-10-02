@@ -429,7 +429,7 @@ export interface AuditLog {
 }
 
 // ==================== ATTENDANCE ====================
-export type LocationType = 'school' | 'office' | 'wfh';
+export type LocationType = 'school' | 'office' | 'wfh' | 'other';
 
 export interface AttendanceRecord {
   id: string;

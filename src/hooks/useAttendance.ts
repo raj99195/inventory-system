@@ -156,7 +156,7 @@ export async function getTodaysAttendance(
 // ─── Geofence + late detection (pure functions) ────────────────
 
 interface GeofenceResult {
-  withinRadius: boolean | null; // null = wfh (no check)
+  withinRadius: boolean | null; // null = no fixed geofence (WFH / Other), or missing configuration
   distance: number | null;
   radius: number | null;
 }
@@ -169,7 +169,7 @@ export function computeGeofence(
   settings: AttendanceSettings
 ): GeofenceResult {
   if (locationType === 'school' && !school) return { withinRadius: false, distance: null, radius: null };
-  if (locationType === 'wfh') {
+  if (locationType === 'wfh' || locationType === 'other') {
     return { withinRadius: null, distance: null, radius: null };
   }
 

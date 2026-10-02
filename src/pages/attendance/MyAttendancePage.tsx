@@ -134,6 +134,7 @@ export default function MyAttendancePage() {
                         'text-[10px] font-bold uppercase px-2 py-0.5 rounded-full',
                         r.locationType === 'school' && 'bg-pastel-blue text-blue-800',
                         r.locationType === 'office' && 'bg-pastel-green text-green-800',
+                        r.locationType === 'other' && 'bg-brand-cream-dark text-brand-choco',
                         r.locationType === 'wfh' && 'bg-pastel-pink text-pink-800'
                       )}
                     >
@@ -141,7 +142,7 @@ export default function MyAttendancePage() {
                         ? r.schoolName ?? 'School'
                         : r.locationType === 'office'
                         ? 'Office'
-                        : 'WFH'}
+                        : r.locationType === 'other' ? 'Other' : 'WFH'}
                     </span>
                   </div>
                   <div className="flex items-center gap-3 text-xs text-brand-choco-soft mt-1 flex-wrap">

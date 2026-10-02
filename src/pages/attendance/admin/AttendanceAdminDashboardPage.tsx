@@ -1,5 +1,5 @@
-import { useMemo } from 'react';
-import { Link, Navigate } from 'react-router-dom';
+import { useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import {
   Users as UsersIcon,
   Clock,
@@ -8,7 +8,7 @@ import {
   FileText,
   Loader2,
   CheckCircle2,
-  LogOut,
+  LogOut, Eye, EyeOff,
 } from 'lucide-react';
 import { usePermission } from '@/hooks/usePermission';
 import { useAllAttendance } from '@/hooks/useAttendance';
@@ -18,9 +18,10 @@ import { fmtTime, minutesToHours, todayKey } from '@/lib/attendance/datetime';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/contexts/AuthContext';
 import { canActOnUser } from '@/lib/permissions';
-import AttendanceReminderCard from '@/components/attendance/AttendanceReminderCard';
+import AttendanceHomePage from '../AttendanceHomePage';
 
 export default function AttendanceAdminDashboardPage() {
+  const [showNumbers, setShowNumbers] = useState(false);
   const { can } = usePermission();
   const { records, loading: loadingRecs } = useAllAttendance(500);
   const { leaves, loading: loadingLeaves } = useAllLeaves(500);
@@ -43,7 +44,7 @@ export default function AttendanceAdminDashboardPage() {
     return { checkedIn, checkedOut, late, wfh, pendingLeaves };
   }, [todayRecs, leaves, userMap]);
 
-  if (!can('attendance.viewAll')) return <Navigate to="/" replace />;
+  if (!can('attendance.viewAll')) return <AttendanceHomePage embedded />;
 
   if (loading) {
     return (
@@ -55,6 +56,7 @@ export default function AttendanceAdminDashboardPage() {
 
   return (
     <div className="space-y-6">
+      <AttendanceHomePage embedded />
       <div>
         <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-brand-orange-50 text-brand-orange-dark text-xs font-bold uppercase tracking-wider mb-3">
           <span className="w-1.5 h-1.5 rounded-full bg-brand-orange" />
@@ -63,17 +65,15 @@ export default function AttendanceAdminDashboardPage() {
         <h1 className="font-display text-4xl lg:text-5xl font-bold">
           {new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long' })}
         </h1>
-        <p className="text-brand-choco-soft mt-2">
-          {active.length} active employees · {stats.checkedIn} checked in · {stats.late} late · {stats.wfh} WFH
-        </p>
+
       </div>
 
-      <AttendanceReminderCard />
+      <button type="button" className="btn-secondary" aria-pressed={showNumbers} onClick={() => setShowNumbers(v => !v)}>{showNumbers ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}{showNumbers ? "Hide team numbers" : "Show team numbers"}</button>
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <Stat label="Checked-in Today" value={stats.checkedIn} total={active.length} icon={CheckCircle2} tone="pastel-green" />
-        <Stat label="Checked-out" value={stats.checkedOut} total={active.length} icon={LogOut} tone="pastel-blue" />
-        <Stat label="Late arrivals" value={stats.late} icon={AlertTriangle} tone="pastel-peach" />
-        <Stat label="Work from home" value={stats.wfh} icon={MapPin} tone="pastel-pink" />
+        <Stat hidden={!showNumbers} label="Checked-in Today" value={stats.checkedIn} total={active.length} icon={CheckCircle2} tone="pastel-green" />
+        <Stat hidden={!showNumbers} label="Checked-out" value={stats.checkedOut} total={active.length} icon={LogOut} tone="pastel-blue" />
+        <Stat hidden={!showNumbers} label="Late arrivals" value={stats.late} icon={AlertTriangle} tone="pastel-peach" />
+        <Stat hidden={!showNumbers} label="Work from home" value={stats.wfh} icon={MapPin} tone="pastel-pink" />
       </div>
 
       <div className="grid md:grid-cols-2 gap-4">
@@ -95,7 +95,7 @@ export default function AttendanceAdminDashboardPage() {
                   stats.pendingLeaves > 0 ? 'bg-pastel-peach text-orange-800' : 'bg-pastel-green text-green-800'
                 )}
               >
-                {stats.pendingLeaves}
+                {showNumbers ? stats.pendingLeaves : "•••"}
               </span>
             </div>
           </Link>
@@ -113,7 +113,7 @@ export default function AttendanceAdminDashboardPage() {
                 </div>
               </div>
               <span className="text-xs font-bold px-2.5 py-1 rounded-full bg-brand-orange-50 text-brand-orange-dark">
-                {active.length}
+                {showNumbers ? active.length : "•••"}
               </span>
             </div>
           </Link>
@@ -174,12 +174,14 @@ export default function AttendanceAdminDashboardPage() {
 }
 
 function Stat({
+  hidden,
   label,
   value,
   total,
   icon: Icon,
   tone,
 }: {
+  hidden: boolean;
   label: string;
   value: number;
   total?: number;
@@ -201,8 +203,8 @@ function Stat({
       </div>
       <div className="text-xs font-semibold text-brand-choco-light">{label}</div>
       <div className="font-display text-2xl font-bold text-brand-choco mt-0.5">
-        {value}
-        {total != null && <span className="text-brand-choco-soft text-base font-medium"> / {total}</span>}
+        {hidden ? "•••" : value}
+        {!hidden && total != null && <span className="text-brand-choco-soft text-base font-medium"> / {total}</span>}
       </div>
     </div>
   );

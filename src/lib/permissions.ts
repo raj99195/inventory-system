@@ -340,7 +340,7 @@ export function canActOnUser(actor: AppUser | null | undefined, target: AppUser 
 }
 
 export function hrmsHomePath(profile: AppUser | null | undefined): string {
-  return profile && ['super_admin', 'admin'].includes(profile.role) ? '/attendance/admin' : '/attendance';
+  return profile && ['super_admin', 'admin', 'hr', 'manager'].includes(profile.role) ? '/attendance/admin' : '/attendance';
 }
 
 export function containsLockedPerms(perms: Permissions): boolean {

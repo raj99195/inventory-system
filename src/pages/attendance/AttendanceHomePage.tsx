@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, Navigate } from 'react-router-dom';
 import {
   Camera as CameraIcon,
   LogOut,
@@ -17,9 +17,10 @@ import { useLeaveBalance } from '@/hooks/useLeaves';
 import { useAttendanceSettings } from '@/hooks/useAttendanceSettings';
 import { fmtTime, minutesToHours, monthStart, monthEnd } from '@/lib/attendance/datetime';
 import { cn } from '@/lib/utils';
+import { hrmsHomePath } from '@/lib/permissions';
 import AttendanceReminderCard from '@/components/attendance/AttendanceReminderCard';
 
-export default function AttendanceHomePage() {
+export default function AttendanceHomePage({ embedded = false }: { embedded?: boolean }) {
   const { userDoc } = useAuth();
   const { can } = usePermission();
   const uid = userDoc?.uid ?? null;
@@ -42,6 +43,7 @@ export default function AttendanceHomePage() {
 
   const pendingLeaves = leaves.filter((l) => l.status === 'pending').length;
 
+  if (!embedded && hrmsHomePath(userDoc) === '/attendance/admin') return <Navigate to="/attendance/admin" replace />;
   if (balanceError) return <p role="alert">Unable to load leave policy. Check your connection and reload.</p>;
   if (loading || !userDoc) {
     return (

@@ -85,6 +85,8 @@ const NAV_SECTIONS: NavSection[] = [
   {
     title: 'Inventory',
     items: [
+      { to: '/requests', label: 'My Requests', icon: Send, end: true, viewPerm: 'requests.viewOwn' },
+      { to: '/requests/admin', label: 'Approvals', icon: Inbox, viewPerm: 'requests.viewAll' },
       { to: '/office-inventory', label: 'Office Inventory', icon: Package, viewPerm: 'officeInventory.view' },
       { to: '/office-assets', label: 'Office Assets', icon: Laptop, viewPerm: 'officeAssets.view' },
       { to: '/products', label: 'Products', icon: Package, viewPerm: 'products.view', createPerm: 'products.create', quickAddType: 'products' },
@@ -96,8 +98,6 @@ const NAV_SECTIONS: NavSection[] = [
       { to: '/assets', label: 'Assets', icon: Laptop, viewPerm: 'assets.view', createPerm: 'assets.create', quickAddType: 'assets' },
       { to: '/assignments', label: 'Asset Assignments', icon: UserCheck, viewPerm: 'assignments.view', createPerm: 'assignments.assign', quickAddType: 'assignments' },
 
-      { to: '/requests', label: 'My Requests', icon: Send, end: true, viewPerm: 'requests.viewOwn' },
-      { to: '/requests/admin', label: 'Approvals', icon: Inbox, viewPerm: 'requests.viewAll' },
     ],
   },
   {
@@ -105,7 +105,7 @@ const NAV_SECTIONS: NavSection[] = [
     items: [
       { to: '/attendance', label: 'Home', icon: HomeIcon, end: true, viewPerm: 'attendance.viewOwn' },
       { to: '/attendance/holidays', label: 'Holiday Calendar', icon: CalendarIcon, viewPerm: 'attendance.viewOwn' },
-      { to: '/attendance/my', label: 'My History', icon: CalendarIcon, viewPerm: 'attendance.viewOwn' },
+      { to: '/attendance/my', label: 'My Attendance', icon: CalendarIcon, viewPerm: 'attendance.viewOwn' },
       { to: '/attendance/leaves', label: 'My Leaves', icon: ClipboardList, viewPerm: 'leaves.viewOwn' },
       { to: '/attendance/reimbursements', label: 'My Reimbursements', icon: Receipt, viewPerm: 'reimbursements.viewOwn' },
 
@@ -307,7 +307,7 @@ function getPageTitle(path: string) {
     '/attendance': { category: 'HRMS', title: 'Home' },
     '/attendance/mark': { category: 'HRMS', title: 'Mark Attendance' },
     '/attendance/holidays': { category: 'HRMS', title: 'Holiday Calendar' },
-    '/attendance/my': { category: 'HRMS', title: 'My History' },
+    '/attendance/my': { category: 'HRMS', title: 'My Attendance' },
     '/attendance/apply-leave': { category: 'HRMS', title: 'Apply Leave' },
     '/attendance/leaves': { category: 'HRMS', title: 'My Leaves' },
     '/attendance/reimbursements': { category: 'HRMS', title: 'My Reimbursements' },
@@ -627,6 +627,7 @@ function SidebarContent({ onNavigate }: {
 
   const visibleSections = NAV_SECTIONS.filter((section) => section.title === currentSection).map((section) => {
     const items = section.items
+      .filter(item => item.to !== '/attendance' || hrmsHomePath(userDoc) === '/attendance')
       .filter((item) => can(item.viewPerm) || (item.to === '/users' && can('users.create')))
       .map((item) => ({ ...item, children: item.children?.filter((c) => can(c.viewPerm)) ?? [] }));
     return { ...section, items };

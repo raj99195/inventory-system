@@ -302,7 +302,7 @@ export default function LoginPage() {
       </div>
 
       {/* Right — form */}
-      <div className="flex-1 flex items-center justify-center p-6 lg:p-12 bg-dots relative">
+      <div className="flex-1 flex flex-col items-center justify-center gap-6 p-6 lg:p-12 bg-dots relative">
         {/* Ambient glow */}
         <div
 
@@ -316,7 +316,7 @@ export default function LoginPage() {
         />
 
         {/* Mobile logo */}
-        <div className="absolute top-6 left-6 lg:hidden">
+        <div className="relative z-10 w-full max-w-md shrink-0 lg:hidden">
           <Logo variant="wide" size="md" />
         </div>
 

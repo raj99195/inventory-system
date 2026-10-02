@@ -1,413 +1,64 @@
-import { useMemo, useState } from 'react';
-import { Navigate } from 'react-router-dom';
-import {
-  Search,
-  Loader2,
-  Package,
-  Laptop,
-  Send,
-  Info,
-} from 'lucide-react';
+import { useState } from 'react';
+import { Navigate, useSearchParams } from 'react-router-dom';
+import { Package, Laptop, Send, Trash2 } from 'lucide-react';
 import toast from 'react-hot-toast';
-import Modal from '@/components/ui/Modal';
-import EmptyState from '@/components/ui/EmptyState';
 import { useAuth } from '@/contexts/AuthContext';
 import { usePermission } from '@/hooks/usePermission';
-import { useAssets } from '@/hooks/useAssets';
 import { useProducts } from '@/hooks/useProducts';
-import { createRequest } from '@/hooks/useRequests';
-import type { Asset, Product, RequestItemType, RequestUrgency } from '@/types';
-import { cn } from '@/lib/utils';
-
-type Tab = 'assets' | 'products';
-
-interface SelectedItem {
-  type: RequestItemType;
-  id: string;
-  name: string;
-  sku?: string;
-  meta?: string; // extra display info
-}
+import { createRequests } from '@/hooks/useRequests';
+import type { RequestUrgency } from '@/types';
 
 export default function RequestAssetPage() {
   const { userDoc } = useAuth();
   const { can } = usePermission();
-  const { assets, loading: loadingA } = useAssets(true, 'officeAssets');
-  const { products, loading: loadingP, error: productsError } = useProducts(true, 'officeInventory');
-
-  const [tab, setTab] = useState<Tab>('assets');
+  const [params] = useSearchParams();
+  const [tab, setTab] = useState(params.get('type') === 'products' ? 'products' : 'assets');
+  const { products, loading, error } = useProducts(tab === 'products', 'officeInventory');
   const [search, setSearch] = useState('');
-  const [selected, setSelected] = useState<SelectedItem | null>(null);
-
-
-  // Only show available assets
-  const availableAssets = useMemo(
-    () => assets.filter((a) => a.status === 'available'),
-    [assets]
-  );
-
-  // Show the catalog, with unavailable products clearly marked.
-  const activeProducts = useMemo(
-    () => products.filter((p) => p.status === 'active'),
-    [products]
-  );
-
-  const filteredAssets = useMemo(() => {
-    if (!search) return availableAssets;
-    const q = search.toLowerCase();
-    return availableAssets.filter(
-      (a) =>
-        a.name.toLowerCase().includes(q) ||
-        a.assetId.toLowerCase().includes(q) ||
-        (a.brand ?? '').toLowerCase().includes(q) ||
-        (a.model ?? '').toLowerCase().includes(q) ||
-        a.category.toLowerCase().includes(q)
-    );
-  }, [availableAssets, search]);
-
-  const filteredProducts = useMemo(() => {
-    if (!search) return activeProducts;
-    const q = search.toLowerCase();
-    return activeProducts.filter(
-      (p) =>
-        p.name.toLowerCase().includes(q) ||
-        p.sku.toLowerCase().includes(q) ||
-        p.category.toLowerCase().includes(q)
-    );
-  }, [activeProducts, search]);
-
-  if (!can('requests.createOwn')) {
-    return <Navigate to="/" replace />;
-  }
-
-  const loading = loadingA || loadingP;
-
-  return (
-    <div className="space-y-6">
-      <div>
-        <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-brand-orange-50 text-brand-orange-dark text-xs font-bold uppercase tracking-wider mb-3">
-          <span className="w-1.5 h-1.5 rounded-full bg-brand-orange" />
-          New Request
-        </div>
-        <h1 className="font-display text-4xl lg:text-5xl font-bold">Request an Item</h1>
-        <p className="text-brand-choco-soft mt-2">
-          Request office items. HR or an authorized approver reviews and assigns your item.
-        </p>
-      </div>
-
-      {/* Tabs */}
-      <div className="flex gap-1 border-b border-brand-choco/10 overflow-x-auto">
-        <TabButton active={tab === 'assets'} onClick={() => setTab('assets')} icon={Laptop} label="Office Assets" count={availableAssets.length} />
-        <TabButton active={tab === 'products'} onClick={() => setTab('products')} icon={Package} label="Office Inventory" count={activeProducts.length} />
-      </div>
-
-      {/* Search */}
-      <div className="card !p-4">
-        <div className="relative">
-          <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-brand-choco-soft" />
-          <input
-            type="text"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder={tab === 'assets' ? 'Search available assets…' : 'Search products in stock…'}
-            className="input-field pl-11 !py-2.5"
-          />
-        </div>
-      </div>
-
-      {tab === 'products' && !loadingP && !productsError && (
-        <p className="text-sm text-brand-choco-soft">{activeProducts.length} products in catalog · {activeProducts.filter((p) => p.currentStock > 0).length} in stock. Out-of-stock products become requestable once stock is added.</p>
-      )}
-      {/* Content */}
-      {tab === 'products' && productsError ? (
-        <p role="alert" className="card text-red-600">Unable to load products. Please reload and try again.</p>
-      ) : loading ? (
-        <div className="flex items-center justify-center p-12">
-          <Loader2 className="w-6 h-6 animate-spin text-brand-orange" />
-        </div>
-      ) : tab === 'assets' ? (
-        filteredAssets.length === 0 ? (
-          <EmptyState
-            icon={Laptop}
-            title={availableAssets.length === 0 ? 'No available assets' : 'No matches'}
-            description={
-              availableAssets.length === 0
-                ? 'All assets are currently assigned or under repair.'
-                : 'Try a different search term.'
-            }
-          />
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {filteredAssets.map((a) => (
-              <AssetCard key={a.id} asset={a} onRequest={() => setSelected({
-                type: 'asset', id: a.id, name: a.name, sku: a.assetId,
-                meta: `${a.category}${a.brand ? ' · ' + a.brand : ''}${a.model ? ' · ' + a.model : ''}`,
-              })} />
-            ))}
-          </div>
-        )
-      ) : filteredProducts.length === 0 ? (
-        <EmptyState
-          icon={Package}
-          title={activeProducts.length === 0 ? 'No active products' : 'No matches'}
-          description={
-            activeProducts.length === 0
-              ? 'No active products are currently in the catalog.'
-              : 'Try a different search term.'
-          }
-        />
-      ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {filteredProducts.map((p) => (
-            <ProductCard key={p.id} product={p} onRequest={() => setSelected({
-              type: 'product', id: p.id, name: p.name, sku: p.sku,
-              meta: `${p.category} · Stock: ${p.currentStock} ${p.unit}`,
-            })} />
-          ))}
-        </div>
-      )}
-
-      {selected && userDoc && (
-        <RequestModal
-          selected={selected}
-          userDoc={userDoc}
-          onClose={() => setSelected(null)}
-        />
-      )}
-    </div>
-  );
-}
-
-function TabButton({
-  active, onClick, icon: Icon, label, count,
-}: {
-  active: boolean;
-  onClick: () => void;
-  icon: React.ComponentType<{ className?: string }>;
-  label: string;
-  count: number;
-}) {
-  return (
-    <button
-      onClick={onClick}
-      className={cn(
-        'px-4 py-2.5 text-sm font-bold border-b-2 -mb-px transition flex items-center gap-2 shrink-0 whitespace-nowrap',
-        active ? 'border-brand-orange text-brand-orange-dark' : 'border-transparent text-brand-choco-soft hover:text-brand-choco'
-      )}
-    >
-      <Icon className="w-4 h-4" />
-      {label}
-      <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-brand-cream-dark text-brand-choco">
-        {count}
-      </span>
-    </button>
-  );
-}
-
-function AssetCard({ asset, onRequest }: { asset: Asset; onRequest: () => void }) {
-  return (
-    <div className="card !p-5 hover:shadow-lift">
-      <div className="flex items-start gap-3 mb-3">
-        <div className="w-11 h-11 rounded-2xl bg-pastel-blue flex items-center justify-center flex-shrink-0">
-          <Laptop className="w-5 h-5 text-blue-800" />
-        </div>
-        <div className="min-w-0 flex-1">
-          <div className="text-[10px] font-bold text-brand-orange">{asset.assetId}</div>
-          <h3 className="font-bold text-brand-choco truncate">{asset.name}</h3>
-          <p className="text-xs text-brand-choco-soft truncate">
-            {asset.category}
-            {asset.brand && ` · ${asset.brand}`}
-          </p>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-2 gap-2 text-xs mb-4">
-        <div>
-          <div className="text-[10px] font-bold text-brand-choco-soft uppercase">Condition</div>
-          <div className="font-semibold text-brand-choco capitalize">{asset.condition}</div>
-        </div>
-        <div>
-          <div className="text-[10px] font-bold text-brand-choco-soft uppercase">Serial</div>
-          <div className="font-semibold text-brand-choco truncate">{asset.serialNumber || '—'}</div>
-        </div>
-      </div>
-
-      <button onClick={onRequest} className="btn-primary w-full">
-        <Send className="w-4 h-4" />
-        Request this Asset
-      </button>
-    </div>
-  );
-}
-
-function ProductCard({ product, onRequest }: { product: Product; onRequest: () => void }) {
-  return (
-    <div className="card !p-5 hover:shadow-lift">
-      <div className="flex items-start gap-3 mb-3">
-        <div className="w-11 h-11 rounded-2xl bg-pastel-green flex items-center justify-center flex-shrink-0">
-          <Package className="w-5 h-5 text-green-800" />
-        </div>
-        <div className="min-w-0 flex-1">
-          <div className="text-[10px] font-bold text-brand-orange">{product.sku}</div>
-          <h3 className="font-bold text-brand-choco truncate">{product.name}</h3>
-          <p className="text-xs text-brand-choco-soft truncate">
-            {product.category}
-            {product.brand && ` · ${product.brand}`}
-          </p>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-2 gap-2 text-xs mb-4">
-        <div>
-          <div className="text-[10px] font-bold text-brand-choco-soft uppercase">In Stock</div>
-          <div className="font-bold text-green-700">
-            {product.currentStock} {product.unit}
-          </div>
-        </div>
-        <div>
-          <div className="text-[10px] font-bold text-brand-choco-soft uppercase">Unit</div>
-          <div className="font-semibold text-brand-choco">{product.unit}</div>
-        </div>
-      </div>
-
-      <button onClick={onRequest} disabled={!(product.currentStock > 0)} className="btn-primary w-full disabled:opacity-50 disabled:cursor-not-allowed">
-        <Send className="w-4 h-4" />
-        {product.currentStock > 0 ? 'Request' : 'Out of stock'}
-      </button>
-    </div>
-  );
-}
-
-function RequestModal({
-  selected, userDoc, onClose,
-}: {
-  selected: SelectedItem;
-  userDoc: { uid: string; name: string; email: string; department?: string };
-  onClose: () => void;
-}) {
-  const [quantity, setQuantity] = useState(1);
+  const [cart, setCart] = useState<Record<string, number>>({});
+  const [assetName, setAssetName] = useState('');
   const [reason, setReason] = useState('');
   const [urgency, setUrgency] = useState<RequestUrgency>('normal');
   const [busy, setBusy] = useState(false);
-
+  if (!can('requests.createOwn')) return <Navigate to="/" replace />;
+  const selected = Object.entries(cart);
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!userDoc || busy) return;
     if (!reason.trim()) return toast.error('Please provide a reason');
+    const common = { scope: 'office' as const, userId: userDoc.uid, userName: userDoc.name, userEmail: userDoc.email, userDepartment: userDoc.department, reason, urgency };
     setBusy(true);
     try {
-      await createRequest({
-        scope: 'office',
-        userId: userDoc.uid,
-        userName: userDoc.name,
-        userEmail: userDoc.email,
-        userDepartment: userDoc.department,
-        itemType: selected.type,
-        itemId: selected.id,
-        itemName: selected.name,
-        itemSku: selected.sku,
-        quantity: selected.type === 'asset' ? 1 : quantity,
-        reason,
-        urgency,
-      });
-      toast.success('Request submitted — awaiting approval');
-      onClose();
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to submit');
-    } finally {
-      setBusy(false);
-    }
+      if (tab === 'assets') {
+        if (!assetName.trim()) throw new Error('Enter the asset you need');
+        await createRequests([{ ...common, itemType: 'asset', itemId: '', itemName: assetName.trim(), quantity: 1 }]);
+        setAssetName('');
+      } else {
+        const items = selected.map(([id, quantity]) => {
+          const product = products.find(p => p.id === id);
+          if (!product || product.status !== 'active' || !Number.isSafeInteger(quantity) || quantity < 1 || quantity > product.currentStock) throw new Error('Check selected quantities and available stock');
+          return { ...common, itemType: 'product' as const, itemId: id, itemName: product.name, itemSku: product.sku, quantity };
+        });
+        await createRequests(items);
+        setCart({});
+      }
+      setReason('');
+      toast.success('Request submitted for approval');
+    } catch (e) { toast.error(e instanceof Error ? e.message : 'Submission failed'); }
+    finally { setBusy(false); }
   };
-
-  return (
-    <Modal open onClose={onClose} title="Request Item" size="md">
-      <form onSubmit={submit} className="p-6 space-y-5">
-        {/* Selected item summary */}
-        <div className="rounded-2xl bg-brand-cream-dark p-4">
-          <div className="text-[10px] font-bold uppercase text-brand-choco-soft mb-1">
-            {selected.type === 'asset' ? 'Asset' : 'Product'}
-          </div>
-          <div className="font-bold text-brand-choco">{selected.name}</div>
-          {selected.sku && <div className="text-xs text-brand-orange font-semibold">{selected.sku}</div>}
-          {selected.meta && <div className="text-xs text-brand-choco-soft mt-1">{selected.meta}</div>}
-        </div>
-
-        {/* Quantity (products only) */}
-        {selected.type === 'product' && (
-          <div>
-            <label className="text-sm font-semibold mb-1.5 block">Quantity *</label>
-            <input
-              type="number"
-              min="1"
-              required
-              value={quantity}
-              onChange={(e) => setQuantity(parseInt(e.target.value) || 1)}
-              className="input-field"
-            />
-          </div>
-        )}
-
-        {/* Reason */}
-        <div>
-          <label className="text-sm font-semibold mb-1.5 block">Reason *</label>
-          <textarea
-            rows={3}
-            required
-            value={reason}
-            onChange={(e) => setReason(e.target.value)}
-            className="input-field resize-none"
-            placeholder="Why do you need this? (e.g. Working on VR project, need this for demo…)"
-          />
-        </div>
-
-        {/* Urgency */}
-        <div>
-          <label className="text-sm font-semibold mb-1.5 block">Urgency</label>
-          <div className="grid grid-cols-2 gap-2">
-            {(['normal', 'urgent'] as RequestUrgency[]).map((u) => (
-              <button
-                key={u}
-                type="button"
-                onClick={() => setUrgency(u)}
-                className={cn(
-                  'py-2.5 rounded-2xl text-sm font-bold capitalize transition',
-                  urgency === u
-                    ? u === 'urgent'
-                      ? 'bg-pastel-peach text-orange-800 ring-2 ring-orange-400'
-                      : 'bg-brand-orange-50 text-brand-orange-dark ring-2 ring-brand-orange'
-                    : 'bg-brand-cream-dark text-brand-choco-soft'
-                )}
-              >
-                {u}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <div className="rounded-xl bg-pastel-blue border border-pastel-blue-deep/30 p-3 text-xs text-brand-choco flex items-start gap-2">
-          <Info className="w-3.5 h-3.5 shrink-0 mt-0.5" />
-          Once you submit, this goes to an approver. On approval, the {selected.type} will be auto-assigned to you.
-        </div>
-
-        <div className="flex justify-end gap-2 pt-2 border-t border-brand-choco/8">
-          <button type="button" onClick={onClose} disabled={busy} className="btn-secondary">
-            Cancel
-          </button>
-          <button type="submit" disabled={busy} className="btn-primary">
-            {busy ? (
-              <>
-                <Loader2 className="w-4 h-4 animate-spin" />
-                Submitting…
-              </>
-            ) : (
-              <>
-                <Send className="w-4 h-4" />
-                Submit Request
-              </>
-            )}
-          </button>
-        </div>
-      </form>
-    </Modal>
-  );
+  return <div className="space-y-6">
+    <div><h1 className="font-display text-4xl font-bold">Request Items</h1><p className="text-brand-choco-soft mt-2">Request company equipment or select multiple inventory products.</p></div>
+    <div className="flex flex-wrap gap-2"><button disabled={busy} className={tab === 'assets' ? 'btn-primary' : 'btn-secondary'} onClick={() => setTab('assets')}><Laptop className="w-4 h-4" />Company Assets</button><button disabled={busy} className={tab === 'products' ? 'btn-primary' : 'btn-secondary'} onClick={() => setTab('products')}><Package className="w-4 h-4" />Company Inventory</button></div>
+    <form onSubmit={submit} className="space-y-5">
+      <fieldset disabled={busy} className="space-y-5 disabled:opacity-60">
+      {tab === 'assets' ? <div className="card space-y-3"><label className="block font-semibold">Asset needed<input required className="input-field mt-2" placeholder="e.g. Laptop, projector or keyboard" value={assetName} maxLength={200} onChange={e => setAssetName(e.target.value)} /></label><p className="text-sm text-brand-choco-soft">Your approver will select and assign an available asset.</p></div> : <>
+        <input aria-label="Search products" className="input-field" placeholder="Search products…" value={search} onChange={e => setSearch(e.target.value)} />
+        {loading ? <p>Loading products…</p> : error ? <p role="alert">Unable to load products. Please try again.</p> : <div className="grid sm:grid-cols-2 xl:grid-cols-3 gap-4">{products.filter(p => p.status === 'active' && `${p.name} ${p.sku} ${p.category}`.toLowerCase().includes(search.toLowerCase())).map(p => <div className="card !p-5 space-y-3" key={p.id}><h2 className="font-bold">{p.name}</h2><p className="text-sm text-brand-choco-soft">{p.category} · {p.currentStock} {p.unit} available</p><button type="button" className="btn-secondary" disabled={p.currentStock < 1 || p.id in cart || selected.length >= 50} onClick={() => setCart(c => ({ ...c, [p.id]: 1 }))}>{p.id in cart ? 'Selected' : p.currentStock > 0 ? 'Add to request' : 'Out of stock'}</button></div>)}</div>}
+        {selected.length > 0 && <section className="card space-y-3"><h2 className="font-bold">Selected products ({selected.length})</h2>{selected.map(([id, qty]) => <div key={id} className="flex flex-wrap items-center gap-3"><span className="flex-1 min-w-32">{products.find(p => p.id === id)?.name ?? 'Unavailable product'}</span><input aria-label={`Quantity for ${products.find(p => p.id === id)?.name}`} className="input-field !w-24" type="number" min="1" max={products.find(p => p.id === id)?.currentStock} step="1" required value={qty} onChange={e => setCart(c => ({ ...c, [id]: Number(e.target.value) }))} /><button aria-label="Remove product" type="button" className="btn-secondary" onClick={() => setCart(c => { const next = { ...c }; delete next[id]; return next; })}><Trash2 className="w-4 h-4" /></button></div>)}</section>}
+      </>}
+      <div className="card space-y-4"><label className="block font-semibold">Reason<textarea required className="input-field mt-2" rows={3} value={reason} onChange={e => setReason(e.target.value)} /></label><label className="block font-semibold">Urgency<select className="input-field mt-2" value={urgency} onChange={e => setUrgency(e.target.value as RequestUrgency)}><option value="normal">Normal</option><option value="urgent">Urgent</option></select></label><button disabled={busy || (tab === 'products' && (loading || !!error || !selected.length))} className="btn-primary"><Send className="w-4 h-4" />{busy ? 'Submitting…' : tab === 'products' ? `Submit ${selected.length} products` : 'Submit Request'}</button></div>
+      </fieldset>
+    </form>
+  </div>;
 }
-

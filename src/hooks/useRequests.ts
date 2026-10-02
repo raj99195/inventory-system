@@ -6,7 +6,7 @@ import {
   orderBy,
   where,
   doc,
-  addDoc,
+  writeBatch,
   serverTimestamp,
   runTransaction,
   limit,
@@ -157,7 +157,7 @@ export interface CreateRequestParams {
  * Employee creates a new asset/product request. Status starts as 'pending'.
  * Balance/stock NOT touched until approved.
  */
-export async function createRequest(params: CreateRequestParams): Promise<string> {
+function requestPayload(params: CreateRequestParams) {
   const authUser = auth.currentUser;
   if (!authUser) throw new Error('Not authenticated');
 
@@ -168,7 +168,8 @@ export async function createRequest(params: CreateRequestParams): Promise<string
   } = params;
 
   if (userId !== authUser.uid) throw new Error('You can only request for yourself');
-  if (!itemId) throw new Error('Please select an item');
+  if (!itemId && !(params.scope === 'office' && itemType === 'asset')) throw new Error('Please select an item');
+  if (!itemName.trim()) throw new Error('Enter the item name');
   if (!reason.trim()) throw new Error('Please provide a reason');
   if (!Number.isSafeInteger(quantity) || quantity < 1) throw new Error('Quantity must be a positive whole number');
   if (itemType === 'asset' && quantity !== 1) {
@@ -202,16 +203,19 @@ export async function createRequest(params: CreateRequestParams): Promise<string
     createdAt: serverTimestamp(),
   };
 
-  const ref = await addDoc(collection(db, COL), payload);
+  return payload;
+}
 
-  await logAudit({
-    module: 'requests',
-    action: 'create',
-    recordId: ref.id,
-    recordType: 'request',
-    newValue: { itemType, itemName, quantity, urgency },
-  });
-  return ref.id;
+export async function createRequests(items: CreateRequestParams[]): Promise<string[]> {
+  if (!items.length || items.length > 50) throw new Error('Select between 1 and 50 products');
+  const payloads = items.map(requestPayload);
+  const batch = writeBatch(db);
+  const refs = payloads.map(payload => { const ref = doc(collection(db, COL)); batch.set(ref, payload); return ref; });
+  await batch.commit();
+  return refs.map(ref => ref.id);
+}
+export async function createRequest(params: CreateRequestParams): Promise<string> {
+  return (await createRequests([params]))[0];
 }
 
 /**
@@ -223,7 +227,8 @@ export async function createRequest(params: CreateRequestParams): Promise<string
  */
 export async function approveRequest(
   requestId: string,
-  reviewNotes = ''
+  reviewNotes = '',
+  selectedAssetId?: string
 ): Promise<void> {
   const authUser = auth.currentUser;
   if (!authUser) throw new Error('Not authenticated');
@@ -245,7 +250,9 @@ export async function approveRequest(
     const nowIso = new Date().toISOString();
     if (req.scope === 'office') {
       if (!['asset', 'product'].includes(req.itemType)) throw new Error('Invalid office item');
-      const assignmentId = await fulfillOffice(tx, req.itemType === 'asset' ? 'officeAssets' : 'officeInventory', req.itemId, req.userId, req.quantity, req.reason, requestId);
+      const itemId = req.itemId || (req.itemType === 'asset' ? selectedAssetId : null);
+      if (!itemId) throw new Error('Select an available asset to assign');
+      const assignmentId = await fulfillOffice(tx, req.itemType === 'asset' ? 'officeAssets' : 'officeInventory', itemId, req.userId, req.quantity, req.reason, requestId);
       tx.update(requestRef, { status: 'fulfilled', reviewedBy: reviewerId, reviewerName, reviewedAt: nowIso, reviewNotes, fulfilledAt: nowIso, assignmentId });
       return;
     }

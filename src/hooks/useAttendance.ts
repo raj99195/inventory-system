@@ -161,13 +161,14 @@ interface GeofenceResult {
   radius: number | null;
 }
 
-function computeGeofence(
+export function computeGeofence(
   location: { lat: number; lng: number },
   locationType: LocationType,
   school: School | null,
   user: AppUser | null,
   settings: AttendanceSettings
 ): GeofenceResult {
+  if (locationType === 'school' && !school) return { withinRadius: false, distance: null, radius: null };
   if (locationType === 'wfh') {
     return { withinRadius: null, distance: null, radius: null };
   }
@@ -187,11 +188,11 @@ function computeGeofence(
     radius = user?.officeRadiusM ?? settings.orgGeofence?.radiusM ?? 100;
   }
 
-  if (centerLat == null || centerLng == null) {
+  if (!Number.isFinite(centerLat) || !Number.isFinite(centerLng) || (centerLat === 0 && centerLng === 0) || !Number.isFinite(radius) || radius <= 0) {
     return { withinRadius: null, distance: null, radius };
   }
   const dist = Math.round(
-    distanceMeters(location.lat, location.lng, centerLat, centerLng)
+    distanceMeters(location.lat, location.lng, centerLat!, centerLng!)
   );
   return { withinRadius: dist <= radius, distance: dist, radius };
 }
@@ -270,12 +271,11 @@ export async function checkIn(params: CheckInParams): Promise<void> {
   const geo = computeGeofence(location, locationType, school, user, settings);
 
   if (
-    settings.strictGeofence &&
-    locationType === 'office' &&
-    geo.withinRadius === false
+    (locationType === 'school' || (settings.strictGeofence && locationType === 'office')) &&
+    geo.withinRadius !== true
   ) {
     throw new Error(
-      `Off-site check-in blocked. You are ${geo.distance}m from office (allowed: ${geo.radius}m).`
+      `Off-site check-in blocked. You are ${geo.distance}m from the selected location (allowed: ${geo.radius}m).`
     );
   }
 
@@ -361,6 +361,9 @@ export async function checkOut(params: CheckOutParams): Promise<void> {
     throw new Error('Already checked out for today');
   }
 
+  if (selfieBase64 === existing.checkInSelfie) throw new Error('Capture a new selfie for check-out');
+  const geo = computeGeofence(location, existing.locationType, params.school ?? null, user, params.settings);
+  if ((existing.locationType === 'school' || (existing.locationType === 'office' && params.settings.strictGeofence)) && geo.withinRadius !== true) throw new Error('Check-out requires being inside the assigned location radius.');
   const now = new Date();
   const wm = calcWorkingMinutes(existing.checkInAt, now.toISOString());
 

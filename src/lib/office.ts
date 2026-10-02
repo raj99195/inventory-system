@@ -4,6 +4,7 @@ import { canActOnUser, hasPermission, normalizePermissions } from '@/lib/permiss
 import type { AppUser } from '@/types';
 export type OfficeKind = 'officeAssets' | 'officeInventory';
 export async function fulfillOffice(tx: Transaction, kind: OfficeKind, itemId: string, userId: string, quantity: number, reason: string, requestId?: string) {
+  if (!requestId) throw new Error('Office items must be issued through an approved request');
   const actorId = auth.currentUser?.uid;
   if (!actorId) throw new Error('Not authenticated');
   if (!Number.isSafeInteger(quantity) || quantity < 1 || (kind === 'officeAssets' && quantity !== 1)) throw new Error('Invalid quantity');
@@ -23,9 +24,6 @@ export async function fulfillOffice(tx: Transaction, kind: OfficeKind, itemId: s
   tx.set(assignmentRef, { kind, itemId, itemName: item.name, userId, userName: target.name, quantity, reason, status: 'assigned', performedBy: actorId, ...(requestId ? { requestId } : {}), createdAt: serverTimestamp() });
   tx.update(itemRef, kind === 'officeAssets' ? { status: 'assigned', assignedTo: userId, lastAssignmentId: assignmentRef.id, updatedAt: serverTimestamp() } : { currentStock: item.currentStock - quantity, lastAssignmentId: assignmentRef.id, updatedAt: serverTimestamp() });
   return assignmentRef.id;
-}
-export async function assignOffice(kind: OfficeKind, itemId: string, userId: string, quantity: number, reason: string) {
-  await runTransaction(db, (tx) => fulfillOffice(tx, kind, itemId, userId, quantity, reason));
 }
 export async function returnOffice(assignmentId: string) {
   const actorId = auth.currentUser?.uid;

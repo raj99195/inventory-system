@@ -1,3 +1,4 @@
+import { useAssets } from '@/hooks/useAssets';
 import { useMemo, useState } from 'react';
 import { Navigate } from 'react-router-dom';
 import {
@@ -218,12 +219,15 @@ function DecideModal({
   const [busy, setBusy] = useState(false);
   const isApprove = decide.action === 'approve';
   const r = decide.req;
+  const needsAsset = isApprove && r.scope === 'office' && r.itemType === 'asset' && !r.itemId;
+  const { assets } = useAssets(needsAsset, 'officeAssets');
+  const [assetId, setAssetId] = useState('');
 
   const submit = async () => {
     setBusy(true);
     try {
       if (isApprove) {
-        await approveRequest(r.id, remarks);
+        await approveRequest(r.id, remarks, assetId);
         if (r.itemType === 'asset') {
           toast.success('Request approved · asset auto-assigned');
         } else if (r.itemType === 'product') {
@@ -261,6 +265,7 @@ function DecideModal({
           <div className="mt-2 text-xs text-brand-choco-soft">Reason: {r.reason || '—'}</div>
         </div>
 
+        {needsAsset && <label className="block text-sm font-semibold">Asset to assign<select className="input-field mt-2" value={assetId} onChange={e => setAssetId(e.target.value)}><option value="">Select an available asset</option>{assets.filter(a => a.status === 'available').map(a => <option key={a.id} value={a.id}>{a.name} · {a.assetId}</option>)}</select></label>}
         {isApprove && (
           <div className="rounded-xl bg-pastel-green border border-pastel-green-deep/30 p-3 text-xs text-green-900">
             <b>On approval:</b>{' '}
@@ -292,7 +297,7 @@ function DecideModal({
           </button>
           <button
             onClick={submit}
-            disabled={busy}
+            disabled={busy || (needsAsset && !assetId)}
             className={cn('btn-primary', !isApprove && '!bg-red-600 hover:!bg-red-700')}
           >
             {busy ? (

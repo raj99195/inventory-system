@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Navigate } from 'react-router-dom';
 import {
   Camera as CameraIcon,
@@ -15,7 +15,7 @@ import { LocationCapture } from '@/components/attendance/LocationCapture';
 import { LocationTypePicker } from '@/components/attendance/LocationTypePicker';
 import { useAuth } from '@/contexts/AuthContext';
 import { usePermission } from '@/hooks/usePermission';
-import { useTodaysAttendance, checkIn, checkOut } from '@/hooks/useAttendance';
+import { useTodaysAttendance, checkIn, checkOut, computeGeofence } from '@/hooks/useAttendance';
 import { useAttendanceSettings } from '@/hooks/useAttendanceSettings';
 import { useSchools } from '@/hooks/useSchools';
 import { isWorkingDay, todayKey, fmtTime, minutesToHours } from '@/lib/attendance/datetime';
@@ -53,6 +53,13 @@ export default function MarkAttendancePage() {
     ? 'out'
     : 'done';
 
+  useEffect(() => { setSelfie(null); setLocation(null); setNotes(''); }, [mode, uid]);
+  const effectiveType = mode === 'out' ? today?.locationType ?? locType : locType;
+  const effectiveSchool = mode === 'out' ? schools.find(s => s.id === today?.schoolId) ?? null : school;
+  const geo = location ? computeGeofence(location, effectiveType, effectiveSchool, userDoc, settings) : null;
+  const requireFence = effectiveType === 'school' || (effectiveType === 'office' && settings.strictGeofence);
+  const locationBlocked = requireFence && (!geo || geo.withinRadius !== true || (effectiveType === 'school' && !effectiveSchool));
+
   // ─── GUARDS (after all hooks) ───
   if (!can('attendance.markOwn')) {
     return <Navigate to="/" replace />;
@@ -72,6 +79,7 @@ export default function MarkAttendancePage() {
     if (mode === 'in' && locType === 'school' && !schoolId) {
       return toast.error('Please select a school');
     }
+    if (locationBlocked) return toast.error('You must be inside the selected location radius. Refresh your location and try again.');
     setBusy(true);
     try {
       if (mode === 'in') {
@@ -222,13 +230,15 @@ export default function MarkAttendancePage() {
           Selfie
         </div>
         <SelfieCapture
+          key={`${uid}-${mode}`}
           onCapture={setSelfie}
           watermark={`${userDoc.name} · ${mode === 'in' ? 'Check-in' : 'Check-out'}`}
           disabled={busy}
         />
       </div>
 
-      <LocationCapture onCapture={setLocation} />
+      <LocationCapture key={`${uid}-${mode}`} onCapture={setLocation} />
+      {location && locationBlocked && <p role="alert" className="rounded-2xl bg-red-50 p-4 text-sm text-red-700">{geo?.distance != null ? `You are ${geo.distance}m from the selected location. Allowed radius: ${geo.radius}m.` : "The selected location is not configured. Contact your admin."} Attendance is blocked outside this location.</p>}
 
       <div className="card !p-5">
         <label className="text-sm font-semibold mb-1.5 block">
@@ -250,7 +260,7 @@ export default function MarkAttendancePage() {
       <button
         className="btn-primary w-full py-3.5 text-base"
         onClick={submit}
-        disabled={busy || !selfie || !location}
+        disabled={busy || !selfie || !location || locationBlocked}
       >
         {busy ? (
           <>

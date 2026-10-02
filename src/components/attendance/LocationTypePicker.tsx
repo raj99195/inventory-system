@@ -73,10 +73,10 @@ export function LocationTypePicker({
 
   // When user picks 'school' and has exactly one school, auto-select it silently
   useEffect(() => {
-    if (value === 'school' && hasOnlyOneSchool && singleSchool && schoolId !== singleSchool.id) {
-      onChange({ locationType: 'school', schoolId: singleSchool.id });
+    if (!loading && value === 'school' && mySchools.length && !mySchools.some(s => s.id === schoolId)) {
+      onChange({ locationType: 'school', schoolId: mySchools[0].id });
     }
-  }, [value, hasOnlyOneSchool, singleSchool, schoolId, onChange]);
+  }, [value, loading, mySchools, schoolId, onChange]);
 
   const pickType = (key: LocationType) => {
     if (key === 'school') {
